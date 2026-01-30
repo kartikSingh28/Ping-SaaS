@@ -1,121 +1,169 @@
-# Ping — Real-Time Messaging Platform
+<h1 align="center">🚀 Ping</h1>
+<h3 align="center">Scalable Real-Time Messaging Backend</h3>
 
-Ping is a real-time messaging platform inspired by modern chat systems, built to explore scalable conversation modeling, ephemeral messaging, and asynchronous processing.
+<p align="center">
+<b>Production-style chat backend engineered for low latency, clean architecture, and horizontal scalability.</b><br/>
+Inspired by Slack • Discord • WhatsApp<br/>
+Focused on <b>backend system design</b>, not UI.
+</p>
 
-The backend is built using **Node.js, TypeScript, Express, and Prisma ORM**, with **PostgreSQL** as the primary database. The project emphasizes backend system design, data modeling, and infrastructure decisions commonly used in production messaging systems.
-
----
-
-## ✨ Core Features
-
-### Authentication & Identity
-- Email/password signup and signin
-- JWT-based authentication
-- Separate user profile layer (display name, avatar)
-
-### Conversations
-- One-to-one conversations
-- Group conversations
-- Role-based membership (admin/member)
-- Unified conversation abstraction (no separate group tables)
-
-### Messaging
-- Persistent messaging backed by PostgreSQL
-- Prisma ORM used for type-safe database access
-- Pagination-ready message retrieval
-- Authorization checks at conversation level
-
-### Realtime Communication
-- WebSocket-based realtime messaging
-- Room-based message broadcasting using conversation IDs
-- Database as source of truth, sockets as delivery layer
-
-### Stealth Mode (Ephemeral Messaging)
-- Messages stored only in Redis
-- TTL-based automatic expiration
-- No database persistence
-- Inspired by disappearing message systems
-
-### Asynchronous Processing
-- Background job processing using BullMQ
-- AI-powered group conversation summaries
-- Non-blocking async workflows (cold paths separated from hot paths)
+<p align="center">
+  <img src="https://img.shields.io/badge/Node.js-Backend-green" />
+  <img src="https://img.shields.io/badge/TypeScript-Strict-blue" />
+  <img src="https://img.shields.io/badge/PostgreSQL-Database-indigo" />
+  <img src="https://img.shields.io/badge/Redis-Realtime-red" />
+  <img src="https://img.shields.io/badge/Socket.IO-WebSockets-black" />
+  <img src="https://img.shields.io/badge/BullMQ-Async-orange" />
+</p>
 
 ---
 
-## 🧠 System Design Overview
+<h2>✨ Capabilities</h2>
 
-Ping is designed around a conversation-centric model:
-
-- Users do not message other users directly
-- All communication happens inside Conversations
-- Membership and roles are handled via a join table
-
-This enables:
-- Clean support for both 1–1 and group chats
-- Centralized authorization logic
-- Easy scalability and extensibility
+<ul>
+  <li>⚡ Realtime WebSocket messaging</li>
+  <li>💬 1–1 & group conversations</li>
+  <li>🔐 Role-based membership & authorization</li>
+  <li>🗄️ Persistent + ephemeral (stealth) messages</li>
+  <li>🧵 Background async processing</li>
+  <li>📈 Horizontally scalable architecture</li>
+</ul>
 
 ---
 
-## 🗄️ Data Model
+<h2>🧠 Architecture</h2>
 
-### Core Tables
-- User — authentication and identity
-- UserProfile — display information
-- Conversation — chat container (1–1 or group)
-- ConversationMember — membership & roles
-- Message — persistent messages
-- GroupSummary — async AI summaries
+<pre align="center">
+Clients
+   ↓
+Express API + Socket.IO (stateless)
+   ↓
+PostgreSQL (durable) | Redis (ephemeral) | BullMQ (workers)
+</pre>
 
-### Storage Strategy
-- PostgreSQL + Prisma ORM → durable state (users, conversations, messages)
-- Redis → ephemeral state (stealth messages with TTL)
-- BullMQ → async processing (AI summaries, background jobs)
-
-This separation ensures:
-- Fast hot-path execution
-- Clean lifecycle management
-- Scalable system behavior
+<p align="center">
+<b>Principle:</b> Database owns state • Sockets deliver • Workers process heavy tasks
+</p>
 
 ---
 
-## 🔄 Request Flow Example
+<h2>🔑 Core Features</h2>
 
-### Sending a Normal Message
-1. Client sends message request
-2. Backend validates conversation membership
-3. Message is persisted via Prisma into PostgreSQL
-4. Message is emitted to connected clients via WebSocket
+<h4>🔐 Authentication</h4>
+<ul>
+  <li>JWT-based auth</li>
+  <li>bcrypt password hashing</li>
+  <li>User profile layer</li>
+</ul>
 
-### Sending a Stealth Message
-1. Client sends message request
-2. Message is stored in Redis with TTL
-3. Message is emitted via WebSocket
-4. Message expires automatically without DB writes
+<h4>💬 Conversations</h4>
+<ul>
+  <li>Conversation-centric model (no direct user messaging)</li>
+  <li>Unified support for 1–1 + groups</li>
+  <li>Role-based access control</li>
+</ul>
+
+<h4>📩 Messaging</h4>
+<ul>
+  <li>PostgreSQL + Prisma ORM</li>
+  <li>Type-safe queries</li>
+  <li>Indexed & pagination-ready retrieval</li>
+</ul>
+
+<h4>⚡ Realtime</h4>
+<ul>
+  <li>Socket.IO rooms by conversationId</li>
+  <li>Instant broadcasting</li>
+  <li>Stateless servers</li>
+</ul>
+
+<h4>🕵️ Stealth Mode (Ephemeral)</h4>
+<ul>
+  <li>Redis-only storage with TTL</li>
+  <li>Automatic expiration</li>
+  <li>No DB writes</li>
+</ul>
+
+<h4>🧵 Async Processing</h4>
+<ul>
+  <li>BullMQ job workers</li>
+  <li>AI-powered group summaries</li>
+  <li>Cold tasks off request path</li>
+</ul>
 
 ---
 
-## 🧰 Tech Stack
+<h2>🗄️ Data Model</h2>
 
-### Backend
-- Node.js
-- TypeScript
-- Express
-- **Prisma ORM**
-- PostgreSQL
+<p>
+User • UserProfile • Conversation • ConversationMember • Message • GroupSummary
+</p>
 
-### Realtime & Infrastructure
-- WebSockets / Socket.IO
-- Redis (TTL-based ephemeral storage)
-- BullMQ (background jobs)
-
-### Security & Validation
-- bcrypt (password hashing)
-- JWT (authentication)
-- Zod (request validation)
+<p>
+Single conversation abstraction → cleaner schema → easier scaling
+</p>
 
 ---
 
-## 📦 Project Structure (Simplified)
+<h2>⚙️ Engineering Decisions</h2>
 
+<ul>
+  <li>Conversation-first design → simpler authorization</li>
+  <li>Database as source of truth → reliability</li>
+  <li>Redis for ephemeral → fast + auto cleanup</li>
+  <li>BullMQ for heavy tasks → non-blocking APIs</li>
+  <li>Stateless services → horizontal scaling</li>
+</ul>
+
+---
+
+<h2>📈 Scaling Strategy</h2>
+
+<ul>
+  <li>Multi-instance Express servers</li>
+  <li>Redis pub/sub for cross-node WebSocket sync</li>
+  <li>Cursor pagination</li>
+  <li>Async workers for cold paths</li>
+  <li>Shardable conversations</li>
+</ul>
+
+<p><b>Designed to handle thousands of concurrent sockets with low latency.</b></p>
+
+---
+
+<h2>🧰 Tech Stack</h2>
+
+<b>Backend:</b> Node.js • TypeScript • Express • Prisma • PostgreSQL  
+<b>Realtime:</b> Socket.IO • Redis • BullMQ  
+<b>Security:</b> JWT • bcrypt • Zod  
+
+---
+
+<h2>🚀 Local Setup</h2>
+
+<pre>
+git clone &lt;repo&gt;
+npm install
+npm run dev
+</pre>
+
+.env
+<pre>
+DATABASE_URL=
+REDIS_URL=
+JWT_SECRET=
+</pre>
+
+---
+
+<h2>💡 Summary</h2>
+
+<p>
+Ping demonstrates scalable backend architecture, realtime communication,
+distributed state separation, and async job processing —
+modeled after modern messaging systems like Slack/Discord.
+</p>
+
+<p align="center">
+⭐ If you like the project, consider starring it!
+</p>
