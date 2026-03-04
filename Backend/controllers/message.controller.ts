@@ -10,7 +10,7 @@ import {
 export async function sendMessage(req: Request, res: Response) {
   try {
 
-    const userId = (req as any).user.id;
+    const userId = (req as any).user.userId;
 
     const { conversationId, content } = req.body;
 
@@ -43,7 +43,7 @@ export async function sendMessage(req: Request, res: Response) {
 export async function getMessages(req: Request, res: Response) {
   try {
 
-    const userId = (req as any).user.id;
+ const userId = (req as any).user.userId;
 
     const { conversationId } = req.params;
 

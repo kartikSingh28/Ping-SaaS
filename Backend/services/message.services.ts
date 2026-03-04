@@ -1,5 +1,4 @@
-import prisma from "../lib/prisma";
-
+import { prisma } from "../lib/prisma";
 /* SEND MESSAGE SERVICE */
 
 export async function sendMessageService(

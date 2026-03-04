@@ -1,9 +1,9 @@
 import { Request, Response } from "express";
-import prisma from "../lib/prisma";
+import { prisma } from "../lib/prisma";
 
 export async function createPrivateConversation(req: Request, res: Response){
     try{
-        const userId=(req as any).user.id;
+        const userId = (req as any).user.userId;
         const {otherUserId}=req.body;
 
         if(!otherUserId){
@@ -41,7 +41,8 @@ export async function createPrivateConversation(req: Request, res: Response){
 
         res.status(201).json(conversation);
 
-    }catch{
+    }catch(error){
+        console.error(error);
         res.status(500).json({message:"Server error"});
     }
 }
