@@ -3,18 +3,12 @@ import userRouter from "./routes/userRoute";
 import conversationRouter from "./routes/conversation.routes";
 import messageRouter from "./routes/message.route";
 
-
-
-
 const app = express();
 
 app.use(express.json());
+
 app.use("/user", userRouter);
 app.use("/conversations", conversationRouter);
 app.use("/messages", messageRouter);
 
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+export default app;
