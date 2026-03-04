@@ -3,7 +3,7 @@ import {
   sendMessageService,
   getConversationMessagesService
 } from "../services/message.services"
-
+import { getIO } from "../ws/ws.server";
 
 /* SEND MESSAGE CONTROLLER */
 
@@ -25,6 +25,9 @@ export async function sendMessage(req: Request, res: Response) {
       conversationId,
       content
     );
+    //emit immediately after saving
+    const io=getIO();
+    io.to(conversationId).emit("new_message",message);
 
     res.status(201).json(message);
 
