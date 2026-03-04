@@ -1,5 +1,6 @@
 import { Socket } from "socket.io";
 
+
 export function registerChatHandlers(socket: Socket) {
 
   /* JOIN CONVERSATION ROOM */

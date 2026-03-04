@@ -2,7 +2,8 @@ import { Request, Response } from "express";
 import {
   sendMessageService,
   getConversationMessagesService
-} from "../services/message.services"
+} from "../services/message.services";
+
 import { getIO } from "../ws/ws.server";
 
 /* SEND MESSAGE CONTROLLER */
@@ -10,7 +11,7 @@ import { getIO } from "../ws/ws.server";
 export async function sendMessage(req: Request, res: Response) {
   try {
 
-    const userId = (req as any).user.userId;
+    const userId = (req as any).user.userId;  
 
     const { conversationId, content } = req.body;
 
@@ -25,13 +26,19 @@ export async function sendMessage(req: Request, res: Response) {
       conversationId,
       content
     );
-    //emit immediately after saving
-    const io=getIO();
-    io.to(conversationId).emit("new_message",message);
+
+    // emit realtime event
+    const io = getIO();
+
+    console.log("Broadcasting message to room:", conversationId);
+
+    io.to(conversationId).emit("new_message", message);
 
     res.status(201).json(message);
 
   } catch (error: any) {
+
+    console.error("Send message error:", error);
 
     res.status(400).json({
       message: error.message
@@ -46,7 +53,7 @@ export async function sendMessage(req: Request, res: Response) {
 export async function getMessages(req: Request, res: Response) {
   try {
 
- const userId = (req as any).user.userId;
+    const userId = (req as any).user.id;   // FIXED
 
     const { conversationId } = req.params;
 
@@ -61,6 +68,8 @@ export async function getMessages(req: Request, res: Response) {
     res.json(messages);
 
   } catch (error: any) {
+
+    console.error("Get messages error:", error);
 
     res.status(400).json({
       message: error.message
