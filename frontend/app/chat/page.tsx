@@ -4,10 +4,10 @@ import { useEffect, useState } from "react"
 
 export default function ChatPage(){
 
-  const [messages,setMessages] = useState([])
+  const [messages,setMessages] = useState<any[]>([])
   const [content,setContent] = useState("")
 
-  const conversationId = "PUT_ONE_CONVERSATION_ID_HERE"
+  const conversationId = "d3915357-74f7-45b7-94d7-e80eb3cdd38c"
 
   async function fetchMessages(){
 
@@ -24,10 +24,22 @@ export default function ChatPage(){
 
     const data = await res.json()
 
-    setMessages(data.messages || data)
+    console.log("messages response:",data)
+
+    if(Array.isArray(data)){
+      setMessages(data)
+    } 
+    else if(Array.isArray(data.messages)){
+      setMessages(data.messages)
+    } 
+    else {
+      setMessages([])
+    }
   }
 
   async function sendMessage(){
+
+    if(!content.trim()) return
 
     const token = localStorage.getItem("token")
 
@@ -46,9 +58,15 @@ export default function ChatPage(){
       }
     )
 
-    const msg = await res.json()
+    const data = await res.json()
 
-    setMessages(prev => [...prev,msg])
+    console.log("send response:",data)
+
+    const message = data.message || data
+
+    if(message?.id){
+      setMessages(prev => [...prev, message])
+    }
 
     setContent("")
   }
@@ -61,26 +79,34 @@ export default function ChatPage(){
 
     <div className="h-screen flex flex-col">
 
-      <div className="flex-1 overflow-y-auto p-4">
+      {/* Messages */}
 
-        {messages.map((m:any)=>(
-          <div key={m.id}>
+      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+
+        {messages.map((m:any,index)=>(
+          <div
+            key={m.id || index}
+            className="bg-gray-200 text-black p-2 rounded-lg w-fit max-w-xs"
+          >
             {m.content}
           </div>
         ))}
 
       </div>
 
+      {/* Input */}
+
       <div className="border-t p-4 flex gap-2">
 
         <input
-          className="border p-2 flex-1"
+          className="border p-2 flex-1 rounded"
           value={content}
           onChange={(e)=>setContent(e.target.value)}
+          placeholder="Type a message..."
         />
 
         <button
-          className="bg-black text-white px-4"
+          className="bg-black text-white px-4 rounded"
           onClick={sendMessage}
         >
           Send

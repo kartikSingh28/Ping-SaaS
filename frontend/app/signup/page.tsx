@@ -10,22 +10,30 @@ export default function SignupPage(){
   const [password,setPassword] = useState("")
   const [name,setName] = useState("")
 
-  async function handleSignup(){
+async function handleSignup(){
 
-    await fetch("http://localhost:3000/user/signup",{
-      method:"POST",
-      headers:{
-        "Content-Type":"application/json"
-      },
-      body:JSON.stringify({
-        email,
-        password,
-        name
-      })
+  const res = await fetch("http://localhost:3000/user/signup",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json"
+    },
+    body:JSON.stringify({
+      email,
+      password,
+      name
     })
+  })
 
+  const data = await res.json()
+
+  console.log(data)
+
+  if(res.ok){
     router.push("/login")
+  } else {
+    alert(data.message || "Signup failed")
   }
+}
 
   return(
 
