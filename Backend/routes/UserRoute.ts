@@ -1,6 +1,8 @@
 import { Router, Request, Response } from "express";
 import { signUpSchema, signinSchema } from "../Schemas/AuthSchema";
 import { signin, signup } from "../Auth/AuthPrisma";
+import { getAllUsers } from "../controllers/user.controller";
+import { userMiddleware } from "../Middleware/AuthMiddleware";
 
 const userRouter = Router();
 
@@ -48,5 +50,7 @@ userRouter.post("/signin", async (req: Request,res: Response) => {
     });
   }
 });
+userRouter.get("/all",userMiddleware, getAllUsers);
+
 
 export default userRouter;
