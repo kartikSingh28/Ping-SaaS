@@ -1,36 +1,57 @@
 import { prisma } from "../lib/prisma";
 /* SEND MESSAGE SERVICE */
 
+import { prisma } from "../lib/prisma";
+
+/* SEND MESSAGE SERVICE */
+
 export async function sendMessageService(
   userId: string,
-  conversationId: string,
+  otherUserId: string,
   content: string
 ) {
 
-  // check membership
-  const member = await prisma.conversationMember.findFirst({
+  // find conversation
+  let conversation = await prisma.conversation.findFirst({
     where: {
-      conversationId,
-      userId
+      type: "ONE_TO_ONE",
+      AND: [
+        { members: { some: { userId } } },
+        { members: { some: { userId: otherUserId } } }
+      ]
     }
   });
 
-  if (!member) {
-    throw new Error("Not a member of this conversation");
+  // create conversation if not exists
+  if (!conversation) {
+    conversation = await prisma.conversation.create({
+      data: {
+        type: "ONE_TO_ONE",
+        createdBy: userId,
+        members: {
+          create: [
+            { userId },
+            { userId: otherUserId }
+          ]
+        }
+      }
+    });
   }
 
   // create message
   const message = await prisma.message.create({
     data: {
-      conversationId,
+      conversationId: conversation.id,
       senderId: userId,
       content
     }
   });
 
-  return message;
+  return {
+    message,
+    conversationId: conversation.id
+  };
 }
-
 
 
 /* GET MESSAGES SERVICE (WITH CURSOR PAGINATION) */

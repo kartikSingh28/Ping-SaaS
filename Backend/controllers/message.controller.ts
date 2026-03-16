@@ -6,28 +6,29 @@ import {
 
 import { getIO } from "../ws/ws.server";
 
-/* SEND MESSAGE CONTROLLER */
+/* SEND MESSAGE */
 
 export async function sendMessage(req: Request, res: Response) {
+
   try {
 
-    const userId = (req as any).user.userId;  
+    const userId = (req as any).user.userId;
 
-    const { conversationId, content } = req.body;
+    const { otherUserId, content } = req.body;
 
-    if (!conversationId || !content) {
+    if (!otherUserId || !content) {
       return res.status(400).json({
-        message: "conversationId and content required"
+        message: "otherUserId and content required"
       });
     }
 
-    const message = await sendMessageService(
+    // service now auto-creates conversation
+    const { message, conversationId } = await sendMessageService(
       userId,
-      conversationId,
+      otherUserId,
       content
     );
 
-    // emit realtime event
     const io = getIO();
 
     console.log("Broadcasting message to room:", conversationId);
@@ -45,15 +46,16 @@ export async function sendMessage(req: Request, res: Response) {
     });
 
   }
+
 }
 
-
-/* GET MESSAGES CONTROLLER */
+/* GET MESSAGES */
 
 export async function getMessages(req: Request, res: Response) {
+
   try {
 
-    const userId = (req as any).user.id;   // FIXED
+    const userId = (req as any).user.userId; // ✅ FIXED
 
     const { conversationId } = req.params;
 
@@ -76,4 +78,5 @@ export async function getMessages(req: Request, res: Response) {
     });
 
   }
+
 }
