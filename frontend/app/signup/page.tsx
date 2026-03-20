@@ -10,34 +10,32 @@ export default function SignupPage(){
   const [password,setPassword] = useState("")
   const [name,setName] = useState("")
 
-async function handleSignup(){
+  async function handleSignup(){
 
-  const res = await fetch("http://localhost:3000/user/signup",{
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json"
-    },
-    body:JSON.stringify({
-      email,
-      password,
-      name
+    const res = await fetch("http://localhost:3000/user/signup",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json"
+      },
+      body:JSON.stringify({
+        email,
+        password,
+        name
+      })
     })
-  })
 
-  const data = await res.json()
+    const data = await res.json()
 
-  console.log(data)
-
-  if(res.ok){
-    router.push("/login")
-  } else {
-    alert(data.message || "Signup failed")
+    if(res.ok){
+      alert("Signup successful!")
+      router.push("/login")
+    } else {
+      alert(data.message || "Signup failed")
+    }
   }
-}
 
   return(
-
-    <div className="h-screen flex items-center justify-center">
+    <div className="h-screen flex items-center justify-center bg-white">
 
       <div className="p-6 shadow rounded w-80">
 
@@ -46,12 +44,14 @@ async function handleSignup(){
         <input
           className="border p-2 w-full mb-3"
           placeholder="Name"
+          value={name}
           onChange={(e)=>setName(e.target.value)}
         />
 
         <input
           className="border p-2 w-full mb-3"
           placeholder="Email"
+          value={email}
           onChange={(e)=>setEmail(e.target.value)}
         />
 
@@ -59,6 +59,7 @@ async function handleSignup(){
           className="border p-2 w-full mb-3"
           type="password"
           placeholder="Password"
+          value={password}
           onChange={(e)=>setPassword(e.target.value)}
         />
 
@@ -70,7 +71,6 @@ async function handleSignup(){
         </button>
 
       </div>
-
     </div>
   )
 }

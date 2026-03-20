@@ -15,7 +15,7 @@ export default function ChatWindow({ selectedUser }: any) {
 
   const [isTyping, setIsTyping] = useState(false)
   const [typingUser, setTypingUser] = useState<string | null>(null)
-  const timeOutRef = useRef<any>(null)
+  const timeoutRef = useRef<any>(null)
 
   /* GET MY USER ID */
   useEffect(() => {
@@ -31,7 +31,7 @@ export default function ChatWindow({ selectedUser }: any) {
     }
   }, [])
 
-  /* CONNECT SOCKET (ONLY ONCE) */
+  /* CONNECT SOCKET */
   useEffect(() => {
     if (!myId) return
 
@@ -69,7 +69,7 @@ export default function ChatWindow({ selectedUser }: any) {
 
   }, [myId])
 
-  /* TYPING LISTENERS (SEPARATE EFFECT - FIXED) */
+  /* TYPING LISTENERS */
   useEffect(() => {
     if (!socketRef.current) return
 
@@ -97,7 +97,7 @@ export default function ChatWindow({ selectedUser }: any) {
 
   }, [conversationId, myId])
 
-  /* LOAD CHAT + ROOM MANAGEMENT (FIXED) */
+  /* LOAD CHAT */
   useEffect(() => {
 
     if (!selectedUser || !myId) return
@@ -125,14 +125,12 @@ export default function ChatWindow({ selectedUser }: any) {
         const convoId = raw?.data?.conversationId
         if (!convoId) return
 
-        // 🔥 leave old room
         if (conversationId) {
           socketRef.current?.emit("leave_conversation", conversationId)
         }
 
         setConversationId(convoId)
 
-        // 🔥 safe join
         if (socketRef.current?.connected) {
           socketRef.current.emit("join_conversation", convoId)
         } else {
@@ -141,7 +139,6 @@ export default function ChatWindow({ selectedUser }: any) {
           })
         }
 
-        // load messages
         const msgRes = await fetch(
           `http://localhost:3000/messages/${convoId}`,
           {
@@ -188,9 +185,9 @@ export default function ChatWindow({ selectedUser }: any) {
       setIsTyping(true)
     }
 
-    if (timeOutRef.current) clearTimeout(timeOutRef.current)
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
 
-    timeOutRef.current = setTimeout(() => {
+    timeoutRef.current = setTimeout(() => {
       socketRef.current?.emit("typing_stop", {
         conversationId,
         userId: myId
@@ -215,7 +212,6 @@ export default function ChatWindow({ selectedUser }: any) {
     setMessages(prev => [...prev, tempMessage])
     setContent("")
 
-    // 🔥 stop typing
     socketRef.current?.emit("typing_stop", {
       conversationId,
       userId: myId
@@ -251,8 +247,22 @@ export default function ChatWindow({ selectedUser }: any) {
   return (
     <div className="flex-1 flex flex-col bg-white text-black">
 
-      <div className="border-b p-3 font-bold">
-        Chat with {selectedUser.email}
+      {/* HEADER */}
+      <div className="flex items-center gap-3 border-b p-3">
+
+        <img
+          src={
+            selectedUser.avatar ||
+            `https://api.dicebear.com/7.x/initials/svg?seed=${selectedUser.name}`
+          }
+          className="w-8 h-8 rounded-full"
+        />
+
+        <div>
+          <p className="font-bold">{selectedUser.name}</p>
+          <p className="text-xs text-gray-400">{selectedUser.email}</p>
+        </div>
+
       </div>
 
       {/* MESSAGES */}
@@ -276,6 +286,12 @@ export default function ChatWindow({ selectedUser }: any) {
                     : "bg-gray-300 text-black rounded-bl-none"
                 }`}
               >
+                {!isMe && (
+                  <p className="text-xs text-gray-500 mb-1">
+                    {msg.sender?.profile?.displayName || "User"}
+                  </p>
+                )}
+
                 {msg.content}
               </div>
             </div>
@@ -285,9 +301,9 @@ export default function ChatWindow({ selectedUser }: any) {
         <div ref={bottomRef}></div>
       </div>
 
-      {/* TYPING UI */}
+      {/* TYPING */}
       {typingUser && (
-        <p className="text-sm text-gray-400 px-4 pb-2">
+        <p className="text-sm text-gray-400 px-4 pb-2 italic">
           {typingUser} is typing...
         </p>
       )}

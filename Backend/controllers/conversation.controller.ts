@@ -104,8 +104,16 @@ export async function getMyConversations(req: Request, res: Response) {
         }
       },
       include: {
-        members: true
+  members: {
+    include: {
+      user: {
+        include: {
+          profile: true
+        }
       }
+    }
+  }
+}
     });
 
     return res.json({

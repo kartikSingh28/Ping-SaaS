@@ -4,40 +4,32 @@ import { useState, useEffect } from "react"
 import UsersSidebar from "./UserSidebar"
 import ChatWindow from "./ChatWindow"
 
-export default function ChatPage(){
+export default function ChatPage() {
 
-const [selectedUser,setSelectedUser] = useState<any>(null)
+  const [selectedUser, setSelectedUser] = useState<any>(null)
 
-useEffect(()=>{
+  useEffect(() => {
+    const savedUser = localStorage.getItem("selectedUser")
 
-const savedUser = localStorage.getItem("selectedUser")
+    if (savedUser) {
+      setSelectedUser(JSON.parse(savedUser))
+    }
+  }, [])
 
-if(savedUser){
-setSelectedUser(JSON.parse(savedUser))
-}
+  function handleSelectUser(user: any) {
+    setSelectedUser(user)
+    localStorage.setItem("selectedUser", JSON.stringify(user))
+  }
 
-},[])
+  return (
+    <div className="h-screen flex bg-white">
 
-function handleSelectUser(user:any){
+      {/* LEFT SIDEBAR */}
+      <UsersSidebar setSelectedUser={handleSelectUser} />
 
-setSelectedUser(user)
+      {/* CHAT WINDOW */}
+      <ChatWindow selectedUser={selectedUser} />
 
-localStorage.setItem("selectedUser",JSON.stringify(user))
-
-}
-
-return(
-
-<div className="h-screen flex bg-white">
-
-  {/* LEFT SIDEBAR */}
-  <UsersSidebar onSelectUser={handleSelectUser} />
-
-  {/* CHAT WINDOW */}
-  <ChatWindow selectedUser={selectedUser} />
-
-</div>
-
-)
-
+    </div>
+  )
 }
