@@ -39,13 +39,20 @@ export async function sendMessageService(
   }
 
   // create message
-  const message = await prisma.message.create({
-    data: {
-      conversationId: conversation.id,
-      senderId: userId,
-      content
+ const message = await prisma.message.create({
+  data: {
+    conversationId: conversation.id,
+    senderId: userId,
+    content
+  },
+  include: {
+    sender: {
+      include: {
+        profile: true
+      }
     }
-  });
+  }
+});
 
   return {
     message,
@@ -75,28 +82,23 @@ export async function getConversationMessagesService(
   }
 
   const messages = await prisma.message.findMany({
+  where: { conversationId },
+  orderBy: { createdAt: "desc" },
+  take: 20,
 
-    where: {
-      conversationId
-    },
+  ...(cursor && {
+    cursor: { id: cursor },
+    skip: 1
+  }),
 
-    // newest messages first
-    orderBy: {
-      createdAt: "desc"
-    },
-
-    // pagination limit
-    take: 20,
-
-    // cursor pagination
-    ...(cursor && {
-      cursor: {
-        id: cursor
-      },
-      skip: 1
-    })
-
-  });
+  include: {
+    sender: {
+      include: {
+        profile: true
+      }
+    }
+  }
+});
 
   return messages;
 }
