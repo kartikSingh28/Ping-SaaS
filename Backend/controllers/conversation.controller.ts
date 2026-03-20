@@ -3,18 +3,40 @@ import { prisma } from "../lib/prisma";
 
 export async function createPrivateConversation(req: Request, res: Response) {
   try {
-
     const userId = (req as any).user.userId;
-    const { otherUserId } = req.body;
+
+    //  SAFE EXTRACTION
+    const otherUserIdRaw = req.body.otherUserId;
+
+    console.log(" Incoming body:", req.body);
+    console.log(" userId:", userId);
+    console.log(" otherUserIdRaw:", otherUserIdRaw);
+
+    //  VALIDATION (STRONG)
+    if (!otherUserIdRaw || typeof otherUserIdRaw !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or missing otherUserId"
+      });
+    }
+
+    const otherUserId = otherUserIdRaw.trim();
 
     if (!otherUserId) {
-      return res.status(400).json({ message: "otherUserId required" });
+      return res.status(400).json({
+        success: false,
+        message: "otherUserId required"
+      });
     }
 
     if (userId === otherUserId) {
-      return res.status(400).json({ message: "Cannot chat with yourself" });
+      return res.status(400).json({
+        success: false,
+        message: "Cannot chat with yourself"
+      });
     }
 
+    //  CHECK EXISTING
     const existing = await prisma.conversation.findFirst({
       where: {
         type: "ONE_TO_ONE",
@@ -25,8 +47,19 @@ export async function createPrivateConversation(req: Request, res: Response) {
       }
     });
 
-    if (existing) return res.json(existing);
+    if (existing) {
+      console.log(" Existing conversation found:", existing.id);
 
+      return res.json({
+        success: true,
+        data: {
+          conversationId: existing.id,
+          isNew: false
+        }
+      });
+    }
+
+    //  CREATE NEW
     const conversation = await prisma.conversation.create({
       data: {
         type: "ONE_TO_ONE",
@@ -40,19 +73,29 @@ export async function createPrivateConversation(req: Request, res: Response) {
       }
     });
 
-    res.status(201).json(conversation);
+    console.log("New conversation created:", conversation.id);
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        conversationId: conversation.id,
+        isNew: true
+      }
+    });
 
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error" });
+    console.error(" Create conversation error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
   }
 }
 
-
 export async function getMyConversations(req: Request, res: Response) {
   try {
-
-    const userId = (req as any).user.userId; // ✅ FIXED
+    const userId = (req as any).user.userId;
 
     const conversations = await prisma.conversation.findMany({
       where: {
@@ -65,9 +108,17 @@ export async function getMyConversations(req: Request, res: Response) {
       }
     });
 
-    res.json(conversations);
+    return res.json({
+      success: true,
+      data: conversations
+    });
 
-  } catch {
-    res.status(500).json({ message: "Server error" });
+  } catch (error) {
+    console.error("Get conversations error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
   }
 }

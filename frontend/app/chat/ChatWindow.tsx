@@ -3,194 +3,236 @@
 import { useState, useEffect, useRef } from "react"
 import { io, Socket } from "socket.io-client"
 
-export default function ChatWindow({ selectedUser }: any){
+export default function ChatWindow({ selectedUser }: any) {
 
-const [content,setContent] = useState("")
-const [messages,setMessages] = useState<any[]>([])
-const [conversationId,setConversationId] = useState("")
-const [myId,setMyId] = useState("")
+  const [content, setContent] = useState("")
+  const [messages, setMessages] = useState<any[]>([])
+  const [myId, setMyId] = useState("")
+  const socketRef = useRef<Socket | null>(null)
+  const bottomRef = useRef<HTMLDivElement | null>(null)
 
-const socketRef = useRef<Socket | null>(null)
-const bottomRef = useRef<HTMLDivElement | null>(null)
+  /* GET MY USER ID */
+  useEffect(() => {
+    const token = localStorage.getItem("token")
 
-/* GET MY USER ID FROM TOKEN */
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split(".")[1]))
+        console.log("MY ID:", payload.userId)
+        setMyId(payload.userId)
+      } catch {
+        console.error("Token decode error")
+      }
+    }
+  }, [])
 
-useEffect(()=>{
-const token = localStorage.getItem("token")
+  /* CONNECT SOCKET */
+  useEffect(() => {
 
-if(token){
-const payload = JSON.parse(atob(token.split(".")[1]))
-setMyId(payload.userId)
-}
-},[])
+    if (!myId) return
 
-/* CONNECT SOCKET */
+    socketRef.current = io("http://localhost:3000", {
+      query: { userId: myId }
+    })
 
-useEffect(()=>{
+    socketRef.current.on("connect", () => {
+      console.log("✅ Connected:", socketRef.current?.id)
+    })
 
-socketRef.current = io("http://localhost:3000")
+    socketRef.current.on("new_message", (message: any) => {
 
-socketRef.current.on("new_message",(message:any)=>{
+      setMessages(prev => {
 
-setMessages(prev=>{
+        // remove temp duplicate
+        const filtered = prev.filter(m =>
+          !(
+            m.id.toString().startsWith("temp") &&
+            m.content === message.content &&
+            String(m.senderId) === String(message.senderId)
+          )
+        )
 
-const exists = prev.find(m => m.id === message.id)
-if(exists) return prev
+        // avoid duplicate real message
+        const exists = filtered.some(m => m.id === message.id)
+        if (exists) return filtered
 
-return [...prev,message]
+        return [...filtered, message]
+      })
 
-})
+    })
 
-})
+    return () => {
+      socketRef.current?.disconnect()
+    }
 
-return ()=>{
-socketRef.current?.disconnect()
-}
+  }, [myId])
 
-},[])
+  /* LOAD CHAT */
+  useEffect(() => {
 
-/* LOAD CONVERSATION + MESSAGES */
+    if (!selectedUser || !myId) return
+    if (selectedUser.id === myId) return
 
-useEffect(()=>{
+    const token = localStorage.getItem("token")
 
-if(!selectedUser) return
+    async function loadChat() {
+      try {
 
-const token = localStorage.getItem("token")
+        const res = await fetch("http://localhost:3000/conversations/private", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            otherUserId: selectedUser.id
+          })
+        })
 
-async function loadMessages(){
+        const raw = await res.json()
+        if (!res.ok) return
 
-const convoRes = await fetch("http://localhost:3000/conversations/private",{
-method:"POST",
-headers:{
-"Content-Type":"application/json",
-Authorization:`Bearer ${token}`
-},
-body:JSON.stringify({
-otherUserId:selectedUser.id
-})
-})
+        const convoId = raw?.data?.conversationId
+        if (!convoId) return
 
-const conversation = await convoRes.json()
+        socketRef.current?.emit("join_conversation", convoId)
 
-setConversationId(conversation.id)
+        const msgRes = await fetch(
+          `http://localhost:3000/messages/${convoId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        )
 
-socketRef.current?.emit("join_conversation",conversation.id)
+        const msgRaw = await msgRes.json()
+        if (!msgRes.ok) return
 
-const msgRes = await fetch(`http://localhost:3000/messages/${conversation.id}`,{
-headers:{
-Authorization:`Bearer ${token}`
-}
-})
+        setMessages(msgRaw?.data || [])
 
-const data = await msgRes.json()
+      } catch (err) {
+        console.error("Chat load error:", err)
+        setMessages([])
+      }
+    }
 
-setMessages(data.messages || data)
+    loadChat()
 
-}
+  }, [selectedUser, myId])
 
-loadMessages()
+  /* AUTO SCROLL */
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages])
 
-},[selectedUser])
+  /* SEND MESSAGE */
+  async function sendMessage() {
 
-/* AUTO SCROLL */
+    if (!selectedUser || !content.trim()) return
 
-useEffect(()=>{
-bottomRef.current?.scrollIntoView({behavior:"smooth"})
-},[messages])
+    const token = localStorage.getItem("token")
 
-/* SEND MESSAGE */
+    const tempMessage = {
+      id: "temp-" + Date.now(),
+      content,
+      senderId: myId
+    }
 
-async function sendMessage(){
+    // instant UI
+    setMessages(prev => [...prev, tempMessage])
+    setContent("")
 
-if(!selectedUser || !content.trim()) return
+    try {
+      await fetch("http://localhost:3000/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          otherUserId: selectedUser.id,
+          content
+        })
+      })
 
-const token = localStorage.getItem("token")
+      // socket will sync real message
 
-await fetch("http://localhost:3000/messages",{
-method:"POST",
-headers:{
-"Content-Type":"application/json",
-Authorization:`Bearer ${token}`
-},
-body:JSON.stringify({
-otherUserId:selectedUser.id,
-content
-})
-})
+    } catch (err) {
+      console.error("Send error:", err)
+    }
+  }
 
-setContent("")
+  /* NO USER */
+  if (!selectedUser) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-white text-black">
+        Select a user to start chatting
+      </div>
+    )
+  }
 
-}
+  /* UI */
+  return (
+    <div className="flex-1 flex flex-col bg-white text-black">
 
-/* NO USER SELECTED */
+      <div className="border-b p-3 font-bold">
+        Chat with {selectedUser.email}
+      </div>
 
-if(!selectedUser){
-return (
-<div className="flex-1 flex items-center justify-center bg-white text-black">
-Select a user to start chatting
-</div>
-)
-}
+      {/* MESSAGES */}
+      <div className="flex-1 p-4 overflow-y-auto space-y-2">
 
-/* CHAT UI */
+        {messages.map((msg) => {
 
-return(
+          // 🔥 FINAL FIX — ROBUST COMPARISON
+          const isMe =
+            msg?.senderId?.toString().trim().toLowerCase() ===
+            myId?.toString().trim().toLowerCase()
 
-<div className="flex-1 flex flex-col bg-white text-black">
+          console.log("COMPARE:", msg.senderId, myId, isMe)
 
-<div className="border-b p-3 font-bold">
-Chat with {selectedUser.email}
-</div>
+          return (
+            <div
+              key={msg.id}
+              className={`flex ${isMe ? "justify-end" : "justify-start"}`}
+            >
+              <div
+                className={`max-w-xs p-2 rounded-lg ${
+                  isMe
+                    ? "bg-black text-white rounded-br-none"
+                    : "bg-gray-300 text-black rounded-bl-none"
+                }`}
+              >
+                {msg.content}
+              </div>
+            </div>
+          )
+        })}
 
-{/* MESSAGES */}
+        <div ref={bottomRef}></div>
 
-<div className="flex-1 p-4 overflow-y-auto space-y-2">
+      </div>
 
-{messages.map((msg)=>{
+      {/* INPUT */}
+      <div className="border-t p-4 flex gap-2">
 
-const isMe = msg.senderId === myId
+        <input
+          className="border p-2 flex-1 text-black"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder="Type a message..."
+        />
 
-return(
-<div
-key={msg.id}
-className={`max-w-xs p-2 rounded ${
-isMe
-? "bg-black text-white ml-auto"
-: "bg-gray-300 text-black"
-}`}
->
-{msg.content}
-</div>
-)
+        <button
+          className="bg-black text-white px-4"
+          onClick={sendMessage}
+        >
+          Send
+        </button>
 
-})}
+      </div>
 
-<div ref={bottomRef}></div>
-
-</div>
-
-{/* INPUT */}
-
-<div className="border-t p-4 flex gap-2">
-
-<input
-className="border p-2 flex-1 text-black"
-value={content}
-onChange={(e)=>setContent(e.target.value)}
-placeholder="Type a message..."
-/>
-
-<button
-className="bg-black text-white px-4"
-onClick={sendMessage}
->
-Send
-</button>
-
-</div>
-
-</div>
-
-)
-
+    </div>
+  )
 }
