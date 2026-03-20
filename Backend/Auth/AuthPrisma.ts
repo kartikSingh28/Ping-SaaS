@@ -10,11 +10,19 @@ export async function signup(data: SignUpInput) {
   const passwordHash = await bcrypt.hash(data.password, 10);
 
   const user = await prisma.user.create({
-    data: {
-      email: data.email,
-      passwordHash,
-    },
-  });
+  data: {
+    email: data.email,
+    passwordHash,
+    profile: {
+      create: {
+        displayName: data.name || data.email
+      }
+    }
+  },
+  include: {
+    profile: true
+  }
+});
   const { passwordHash: _, ...safeUser } = user;
   return safeUser;
 }
