@@ -8,8 +8,14 @@ export default function ChatWindow({ selectedUser }: any) {
   const [content, setContent] = useState("")
   const [messages, setMessages] = useState<any[]>([])
   const [myId, setMyId] = useState("")
+  const [conversationId, setConversationId] = useState<string | null>(null)
+
   const socketRef = useRef<Socket | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
+
+  const [isTyping, setIsTyping] = useState(false)
+  const [typingUser, setTypingUser] = useState<string | null>(null)
+  const timeOutRef = useRef<any>(null)
 
   /* GET MY USER ID */
   useEffect(() => {
@@ -18,7 +24,6 @@ export default function ChatWindow({ selectedUser }: any) {
     if (token) {
       try {
         const payload = JSON.parse(atob(token.split(".")[1]))
-        console.log("MY ID:", payload.userId)
         setMyId(payload.userId)
       } catch {
         console.error("Token decode error")
@@ -26,24 +31,23 @@ export default function ChatWindow({ selectedUser }: any) {
     }
   }, [])
 
-  /* CONNECT SOCKET */
+  /* CONNECT SOCKET (ONLY ONCE) */
   useEffect(() => {
-
     if (!myId) return
 
-    socketRef.current = io("http://localhost:3000", {
+    const socket = io("http://localhost:3000", {
       query: { userId: myId }
     })
 
-    socketRef.current.on("connect", () => {
-      console.log("✅ Connected:", socketRef.current?.id)
+    socketRef.current = socket
+
+    socket.on("connect", () => {
+      console.log(" Connected:", socket.id)
     })
 
-    socketRef.current.on("new_message", (message: any) => {
-
+    socket.on("new_message", (message: any) => {
       setMessages(prev => {
 
-        // remove temp duplicate
         const filtered = prev.filter(m =>
           !(
             m.id.toString().startsWith("temp") &&
@@ -52,22 +56,48 @@ export default function ChatWindow({ selectedUser }: any) {
           )
         )
 
-        // avoid duplicate real message
         const exists = filtered.some(m => m.id === message.id)
         if (exists) return filtered
 
         return [...filtered, message]
       })
-
     })
 
     return () => {
-      socketRef.current?.disconnect()
+      socket.disconnect()
     }
 
   }, [myId])
 
-  /* LOAD CHAT */
+  /* TYPING LISTENERS (SEPARATE EFFECT - FIXED) */
+  useEffect(() => {
+    if (!socketRef.current) return
+
+    const socket = socketRef.current
+
+    const handleTyping = ({ conversationId: incomingId, userId, name }: any) => {
+      if (incomingId === conversationId && userId !== myId) {
+        setTypingUser(name)
+      }
+    }
+
+    const handleStop = ({ conversationId: incomingId, userId }: any) => {
+      if (incomingId === conversationId && userId !== myId) {
+        setTypingUser(null)
+      }
+    }
+
+    socket.on("user_typing", handleTyping)
+    socket.on("user_stop_typing", handleStop)
+
+    return () => {
+      socket.off("user_typing", handleTyping)
+      socket.off("user_stop_typing", handleStop)
+    }
+
+  }, [conversationId, myId])
+
+  /* LOAD CHAT + ROOM MANAGEMENT (FIXED) */
   useEffect(() => {
 
     if (!selectedUser || !myId) return
@@ -95,8 +125,23 @@ export default function ChatWindow({ selectedUser }: any) {
         const convoId = raw?.data?.conversationId
         if (!convoId) return
 
-        socketRef.current?.emit("join_conversation", convoId)
+        // 🔥 leave old room
+        if (conversationId) {
+          socketRef.current?.emit("leave_conversation", conversationId)
+        }
 
+        setConversationId(convoId)
+
+        // 🔥 safe join
+        if (socketRef.current?.connected) {
+          socketRef.current.emit("join_conversation", convoId)
+        } else {
+          socketRef.current?.once("connect", () => {
+            socketRef.current?.emit("join_conversation", convoId)
+          })
+        }
+
+        // load messages
         const msgRes = await fetch(
           `http://localhost:3000/messages/${convoId}`,
           {
@@ -126,6 +171,34 @@ export default function ChatWindow({ selectedUser }: any) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
+  /* HANDLE TYPING */
+  const handleTyping = (e: any) => {
+    const value = e.target.value
+    setContent(value)
+
+    if (!socketRef.current || !conversationId) return
+    if (value.trim() === "") return
+
+    if (!isTyping) {
+      socketRef.current.emit("typing_start", {
+        conversationId,
+        userId: myId,
+        name: selectedUser.name || selectedUser.email
+      })
+      setIsTyping(true)
+    }
+
+    if (timeOutRef.current) clearTimeout(timeOutRef.current)
+
+    timeOutRef.current = setTimeout(() => {
+      socketRef.current?.emit("typing_stop", {
+        conversationId,
+        userId: myId
+      })
+      setIsTyping(false)
+    }, 1000)
+  }
+
   /* SEND MESSAGE */
   async function sendMessage() {
 
@@ -139,9 +212,15 @@ export default function ChatWindow({ selectedUser }: any) {
       senderId: myId
     }
 
-    // instant UI
     setMessages(prev => [...prev, tempMessage])
     setContent("")
+
+    // 🔥 stop typing
+    socketRef.current?.emit("typing_stop", {
+      conversationId,
+      userId: myId
+    })
+    setIsTyping(false)
 
     try {
       await fetch("http://localhost:3000/messages", {
@@ -156,14 +235,11 @@ export default function ChatWindow({ selectedUser }: any) {
         })
       })
 
-      // socket will sync real message
-
     } catch (err) {
       console.error("Send error:", err)
     }
   }
 
-  /* NO USER */
   if (!selectedUser) {
     return (
       <div className="flex-1 flex items-center justify-center bg-white text-black">
@@ -172,7 +248,6 @@ export default function ChatWindow({ selectedUser }: any) {
     )
   }
 
-  /* UI */
   return (
     <div className="flex-1 flex flex-col bg-white text-black">
 
@@ -185,12 +260,9 @@ export default function ChatWindow({ selectedUser }: any) {
 
         {messages.map((msg) => {
 
-          // 🔥 FINAL FIX — ROBUST COMPARISON
           const isMe =
             msg?.senderId?.toString().trim().toLowerCase() ===
             myId?.toString().trim().toLowerCase()
-
-          console.log("COMPARE:", msg.senderId, myId, isMe)
 
           return (
             <div
@@ -211,8 +283,14 @@ export default function ChatWindow({ selectedUser }: any) {
         })}
 
         <div ref={bottomRef}></div>
-
       </div>
+
+      {/* TYPING UI */}
+      {typingUser && (
+        <p className="text-sm text-gray-400 px-4 pb-2">
+          {typingUser} is typing...
+        </p>
+      )}
 
       {/* INPUT */}
       <div className="border-t p-4 flex gap-2">
@@ -220,7 +298,7 @@ export default function ChatWindow({ selectedUser }: any) {
         <input
           className="border p-2 flex-1 text-black"
           value={content}
-          onChange={(e) => setContent(e.target.value)}
+          onChange={handleTyping}
           placeholder="Type a message..."
         />
 
