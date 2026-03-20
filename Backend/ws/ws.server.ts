@@ -25,16 +25,16 @@ export function initWS(server: HTTPServer) {
 
     if (userId) {
       userSocketMap.set(userId, socket.id);
-      console.log("✅ User mapped:", userId, "->", socket.id);
+      console.log(" User mapped:", userId, "->", socket.id);
     } else {
-      console.log("⚠️ No userId received on socket connection");
+      console.log(" No userId received on socket connection");
     }
 
     //  HANDLE DISCONNECT
     socket.on("disconnect", () => {
       if (userId) {
         userSocketMap.delete(userId);
-        console.log("❌ User removed:", userId);
+        console.log(" User removed:", userId);
       }
     });
 
