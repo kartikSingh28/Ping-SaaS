@@ -5,14 +5,17 @@ import UsersSidebar from "./UserSidebar"
 import ChatWindow from "./ChatWindow"
 
 export default function ChatPage() {
-
   const [selectedUser, setSelectedUser] = useState<any>(null)
 
   useEffect(() => {
-    const savedUser = localStorage.getItem("selectedUser")
-
-    if (savedUser) {
-      setSelectedUser(JSON.parse(savedUser))
+    try {
+      const savedUser = localStorage.getItem("selectedUser")
+      if (savedUser) {
+        setSelectedUser(JSON.parse(savedUser))
+      }
+    } catch (err) {
+      console.error("Failed to parse saved user:", err)
+      localStorage.removeItem("selectedUser")
     }
   }, [])
 
@@ -22,14 +25,9 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="h-screen flex bg-white">
-
-      {/* LEFT SIDEBAR */}
+    <div className="h-screen flex bg-zinc-950">
       <UsersSidebar setSelectedUser={handleSelectUser} />
-
-      {/* CHAT WINDOW */}
       <ChatWindow selectedUser={selectedUser} />
-
     </div>
   )
 }
