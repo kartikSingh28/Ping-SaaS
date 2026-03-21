@@ -3,6 +3,9 @@ import { signUpSchema, signinSchema } from "../Schemas/AuthSchema";
 import { signin, signup } from "../Auth/AuthPrisma";
 import { getAllUsers } from "../controllers/user.controller";
 import { userMiddleware } from "../Middleware/AuthMiddleware";
+import multer from "multer"
+import { uploadAvatar } from "../controllers/user.controller"
+
 
 const userRouter = Router();
 
@@ -51,6 +54,16 @@ userRouter.post("/signin", async (req: Request,res: Response) => {
   }
 });
 userRouter.get("/all",userMiddleware, getAllUsers);
+
+
+const upload = multer({ dest: "uploads/" })
+
+userRouter.post(
+  "/upload-avatar",
+  userMiddleware,
+  upload.single("avatar"), // VERY IMPORTANT
+  uploadAvatar
+)
 
 
 export default userRouter;

@@ -35,42 +35,45 @@ export default function SignupPage(){
   }
 
   return(
-    <div className="h-screen flex items-center justify-center bg-white">
+    <div className="h-screen flex items-center justify-center bg-gray-100">
 
-      <div className="p-6 shadow rounded w-80">
+  <div className="bg-white p-6 rounded-lg shadow-md w-80">
 
-        <h1 className="text-xl font-bold mb-4">Signup</h1>
+    <h1 className="text-xl font-bold mb-4 text-black">
+      Signup
+    </h1>
 
-        <input
-          className="border p-2 w-full mb-3"
-          placeholder="Name"
-          value={name}
-          onChange={(e)=>setName(e.target.value)}
-        />
+    <input
+      className="border border-gray-300 p-2 w-full mb-3 rounded text-black placeholder-gray-500"
+      placeholder="Name"
+      value={name}
+      onChange={(e)=>setName(e.target.value)}
+    />
 
-        <input
-          className="border p-2 w-full mb-3"
-          placeholder="Email"
-          value={email}
-          onChange={(e)=>setEmail(e.target.value)}
-        />
+    <input
+      className="border border-gray-300 p-2 w-full mb-3 rounded text-black placeholder-gray-500"
+      placeholder="Email"
+      value={email}
+      onChange={(e)=>setEmail(e.target.value)}
+    />
 
-        <input
-          className="border p-2 w-full mb-3"
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e)=>setPassword(e.target.value)}
-        />
+    <input
+      className="border border-gray-300 p-2 w-full mb-3 rounded text-black placeholder-gray-500"
+      type="password"
+      placeholder="Password"
+      value={password}
+      onChange={(e)=>setPassword(e.target.value)}
+    />
 
-        <button
-          className="bg-black text-white p-2 w-full"
-          onClick={handleSignup}
-        >
-          Signup
-        </button>
+    <button
+      className="bg-black text-white p-2 w-full rounded hover:bg-gray-800 transition"
+      onClick={handleSignup}
+    >
+      Signup
+    </button>
 
-      </div>
-    </div>
+  </div>
+
+</div>
   )
 }
