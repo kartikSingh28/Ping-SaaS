@@ -4,7 +4,7 @@ import { registerChatHandlers } from "./chat.ws";
 
 let io: Server | null = null;
 
-//  userId -> socketId
+//  userI
 const userSocketMap = new Map<string, string>();
 
 export function initWS(server: HTTPServer) {
@@ -20,29 +20,41 @@ export function initWS(server: HTTPServer) {
 
     console.log("WS connected:", socket.id);
 
-    //  GET USER ID FROM FRONTEND
     const userId = socket.handshake.query.userId as string;
+
+    console.log("HANDSHAKE:", socket.handshake.query);
 
     if (userId) {
       userSocketMap.set(userId, socket.id);
+
       console.log(" User mapped:", userId, "->", socket.id);
+
+    
+      io!.emit("online_users", Array.from(userSocketMap.keys()));
     } else {
       console.log(" No userId received on socket connection");
     }
 
-    //  HANDLE DISCONNECT
+    
     socket.on("disconnect", () => {
+      console.log("Disconnected:", socket.id);
+
       if (userId) {
         userSocketMap.delete(userId);
         console.log(" User removed:", userId);
+
+        io!.emit("online_users", Array.from(userSocketMap.keys()));
       }
     });
 
+    // =====================
+    // CHAT HANDLERS
+    // =====================
     registerChatHandlers(socket);
   });
 }
 
-//  EXPORT THIS
+// EXPORT
 export { userSocketMap };
 
 export function getIO(): Server {

@@ -1,11 +1,9 @@
 import { Router, Request, Response } from "express";
 import { signUpSchema, signinSchema } from "../Schemas/AuthSchema";
 import { signin, signup } from "../Auth/AuthPrisma";
-import { getAllUsers } from "../controllers/user.controller";
+import { getAllUsers, uploadAvatar, getMe } from "../controllers/user.controller";
 import { userMiddleware } from "../Middleware/AuthMiddleware";
 import multer from "multer"
-import { uploadAvatar } from "../controllers/user.controller"
-
 
 const userRouter = Router();
 
@@ -15,14 +13,12 @@ userRouter.get("/", (req: Request, res: Response) => {
 
 userRouter.post("/signup", async (req: Request, res: Response) => {
   const parsedData = signUpSchema.safeParse(req.body);
-
   if (!parsedData.success) {
     return res.status(400).json({
       message: "Validation failed",
       error: parsedData.error,
     });
   }
-
   try {
     const result = await signup(parsedData.data);
     res.status(201).json({
@@ -30,14 +26,12 @@ userRouter.post("/signup", async (req: Request, res: Response) => {
       user: result,
     });
   } catch (e: any) {
-    res.status(400).json({
-      error: e.message,
-    });
+    res.status(400).json({ error: e.message });
   }
 });
-userRouter.post("/signin", async (req: Request,res: Response) => {
-  const parsedData = signinSchema.safeParse(req.body);
 
+userRouter.post("/signin", async (req: Request, res: Response) => {
+  const parsedData = signinSchema.safeParse(req.body);
   if (!parsedData.success) {
     return res.status(400).json({
       message: "Validation failed",
@@ -48,22 +42,19 @@ userRouter.post("/signin", async (req: Request,res: Response) => {
     const result = await signin(parsedData.data);
     res.json(result);
   } catch (e: any) {
-    res.status(400).json({
-      error: e.message,
-    });
+    res.status(400).json({ error: e.message });
   }
 });
-userRouter.get("/all",userMiddleware, getAllUsers);
-
 
 const upload = multer({ dest: "uploads/" })
 
+userRouter.get("/me", userMiddleware, getMe);        
+userRouter.get("/all", userMiddleware, getAllUsers);
 userRouter.post(
   "/upload-avatar",
   userMiddleware,
-  upload.single("avatar"), // VERY IMPORTANT
+  upload.single("avatar"),
   uploadAvatar
 )
-
 
 export default userRouter;

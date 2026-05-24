@@ -80,3 +80,28 @@ export async function uploadAvatar(req: any, res: any) {
     })
   }
 }
+
+//get profile
+export async function getMe(req: AuthRequest, res: Response) {
+  try {
+    const userId = req.user.userId
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { profile: true }
+    })
+
+    if (!user) return res.status(404).json({ message: "User not found" })
+
+    return res.json({
+      id: user.id,
+      email: user.email,
+      name: user.profile?.displayName || user.email,
+      avatar: user.profile?.avatarUrl || null
+    })
+
+  } catch (err) {
+    console.error("GET ME ERROR:", err)
+    res.status(500).json({ message: "Failed to fetch user" })
+  }
+}

@@ -29,6 +29,7 @@ export async function signup(data: SignUpInput) {
 export async function signin(data: SignInInput) {
   const user = await prisma.user.findUnique({
     where: { email: data.email },
+    include:{profile:true},
   });
 
   if (!user) {

@@ -68,7 +68,7 @@ export default function ChatWindow({ selectedUser }: any) {
     }
   }, [myId])
 
-  //  Typing listeners
+  //  Typing listenees
   useEffect(() => {
     if (!socketRef.current) return
 

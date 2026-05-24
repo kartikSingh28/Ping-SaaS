@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Search, Settings } from "lucide-react"
+import { io } from "socket.io-client"
 
 const API_BASE = "http://localhost:3000"
 
@@ -9,35 +10,67 @@ export default function UserSidebar({ setSelectedUser }: any) {
   const [users, setUsers] = useState<any[]>([])
   const [me, setMe] = useState<any>(null)
   const [searchQuery, setSearchQuery] = useState("")
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([]) // ✅ FIXED
 
+  // =========================
+  // FETCH USERS + ME
+  // =========================
+  useEffect(() => {
+  const token = localStorage.getItem("token")
+  if (!token) return
+  fetch(`${API_BASE}/user/me`, {
+    headers: { Authorization: `Bearer ${token}` }
+  })
+    .then(res => res.json())
+    .then(data => setMe(data))
+    .catch(err => console.error("Me fetch error:", err))
+
+  fetch(`${API_BASE}/user/all`, {
+    headers: { Authorization: `Bearer ${token}` }
+  })
+    .then(res => res.json())
+    .then(data => setUsers(data))
+    .catch(err => console.error("Users fetch error:", err))
+
+}, [])
+
+  // =========================
+  // SOCKET CONNECTION
+  // =========================
   useEffect(() => {
     const token = localStorage.getItem("token")
     if (!token) return
 
+    let socket: any
+
     try {
       const payload = JSON.parse(atob(token.split(".")[1]))
-      setMe(payload)
-    } catch {
-      console.error("Token decode error")
+      const userId = payload.userId
+
+      socket = io(API_BASE, {
+        query: { userId }
+      })
+
+      socket.on("connect", () => {
+        console.log("Connected:", socket.id)
+      })
+
+      socket.on("online_users", (users: string[]) => {
+        console.log("ONLINE USERS:", users)
+        setOnlineUsers(users)
+      })
+    } catch (err) {
+      console.error("Socket error:", err)
     }
 
-    fetch(`${API_BASE}/user/all`, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const text = await res.text()
-          console.error("API ERROR:", text)
-          return []
-        }
-        return res.json()
-      })
-      .then(data => setUsers(data))
-      .catch(err => console.error("User fetch error:", err))
+    return () => {
+      if (socket) socket.disconnect()
+    }
   }, [])
 
+  // =========================
+  // AVATAR UPLOAD
+  // =========================
   const handleUpload = async (e: any) => {
     const file = e.target.files[0]
     if (!file) return
@@ -57,7 +90,6 @@ export default function UserSidebar({ setSelectedUser }: any) {
       })
 
       const data = await res.json()
-      console.log("Uploaded:", data)
 
       setMe((prev: any) => ({
         ...prev,
@@ -68,6 +100,9 @@ export default function UserSidebar({ setSelectedUser }: any) {
     }
   }
 
+  // =========================
+  // FILTER USERS
+  // =========================
   const filteredUsers = users.filter(user => {
     const name = user.name || user.email || ""
     return name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -75,9 +110,10 @@ export default function UserSidebar({ setSelectedUser }: any) {
 
   const myDisplayName = me?.name || me?.email?.split("@")[0] || "User"
 
+ 
   return (
     <div className="w-80 bg-zinc-950 text-white h-full flex flex-col border-r border-zinc-800">
-      
+
       {/* PROFILE */}
       <div className="p-4 bg-zinc-900/50 border-b border-zinc-800">
         <div className="flex items-center gap-3">
@@ -87,13 +123,9 @@ export default function UserSidebar({ setSelectedUser }: any) {
                 me?.avatar ||
                 `https://api.dicebear.com/7.x/initials/svg?seed=${myDisplayName}`
               }
-              className="w-12 h-12 rounded-full object-cover ring-2 ring-zinc-700 group-hover:ring-zinc-500 transition-all"
+              className="w-12 h-12 rounded-full object-cover ring-2 ring-zinc-700"
               alt="My avatar"
             />
-
-            <div className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-              <Settings className="w-5 h-5 text-white" />
-            </div>
 
             <input
               type="file"
@@ -104,7 +136,9 @@ export default function UserSidebar({ setSelectedUser }: any) {
           </label>
 
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-zinc-100 truncate">{myDisplayName}</p>
+            <p className="font-semibold text-zinc-100 truncate">
+              {myDisplayName}
+            </p>
             <p className="text-xs text-zinc-500 truncate">{me?.email}</p>
           </div>
         </div>
@@ -119,7 +153,7 @@ export default function UserSidebar({ setSelectedUser }: any) {
             placeholder="Search conversations..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-1 bg-transparent text-sm text-zinc-100 placeholder-zinc-500 outline-none"
+            className="flex-1 bg-transparent text-sm text-zinc-100 outline-none"
           />
         </div>
       </div>
@@ -132,7 +166,7 @@ export default function UserSidebar({ setSelectedUser }: any) {
       </div>
 
       {/* USER LIST */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto">
         {filteredUsers.length === 0 && (
           <div className="px-4 py-8 text-center">
             <p className="text-zinc-500 text-sm">No conversations found</p>
@@ -145,29 +179,30 @@ export default function UserSidebar({ setSelectedUser }: any) {
             user.avatar ||
             `https://api.dicebear.com/7.x/initials/svg?seed=${displayName}`
 
+          const isOnline = onlineUsers.includes(String(user.id)) // ✅ KEY LOGIC
+
           return (
             <div
               key={user.id}
               onClick={() => setSelectedUser(user)}
-              className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-800/50 cursor-pointer transition-colors group"
+              className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-800 cursor-pointer transition"
             >
-              <div className="relative flex-shrink-0">
+              <div className="relative">
                 <img
                   src={avatarUrl}
-                  className="w-12 h-12 rounded-full object-cover ring-2 ring-transparent group-hover:ring-zinc-600 transition-all"
+                  className="w-12 h-12 rounded-full"
                   alt={displayName}
                 />
-                <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full ring-2 ring-zinc-950" />
+
+              {/*for online*/ }
+                {isOnline && (
+                  <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full ring-2 ring-zinc-950" />
+                )}
               </div>
 
               <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-zinc-100 truncate">
-                    {displayName}
-                  </span>
-                  <span className="text-xs text-zinc-600">now</span>
-                </div>
-                <p className="text-sm text-zinc-500 truncate">
+                <span className="text-white truncate">{displayName}</span>
+                <p className="text-xs text-zinc-500 truncate">
                   {user.email}
                 </p>
               </div>
