@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
+import { getIO, userSocketMap } from "../ws/ws.server"
 
 
 /* CREATE PRIVATE CONVERSATION */
@@ -149,27 +150,19 @@ export async function getMyConversations(
 
 
 /* TOGGLE STEALTH MODE */
-
 export async function toggleStealthMode(
   req: Request,
   res: Response
 ) {
   try {
 
-    const userId =
-      (req as any).user.userId;
-
-    const { conversationId } =
-      req.params;
+    const userId = (req as any).user.userId;
+    const { conversationId } = req.params;
 
     // verify member
-    const member =
-      await prisma.conversationMember.findFirst({
-        where: {
-          conversationId,
-          userId
-        }
-      });
+    const member = await prisma.conversationMember.findFirst({
+      where: { conversationId, userId }
+    });
 
     if (!member) {
       return res.status(403).json({
@@ -179,12 +172,9 @@ export async function toggleStealthMode(
     }
 
     // get conversation
-    const conversation =
-      await prisma.conversation.findUnique({
-        where: {
-          id: conversationId
-        }
-      });
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId }
+    });
 
     if (!conversation) {
       return res.status(404).json({
@@ -193,21 +183,38 @@ export async function toggleStealthMode(
       });
     }
 
-    // toggle
-    const newMode =
-      conversation.mode === "NORMAL"
-        ? "STEALTH"
-        : "NORMAL";
+    // toggle mode
+    const newMode = conversation.mode === "NORMAL" ? "STEALTH" : "NORMAL";
 
-    const updated =
-      await prisma.conversation.update({
-        where: {
-          id: conversationId
-        },
-        data: {
+    const updated = await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { mode: newMode }
+    });
+
+    const io = getIO()
+
+    // notify everyone already in the chat room
+    io.to(conversationId).emit("mode_changed", {
+      conversationId,
+      mode: newMode
+    })
+
+    // also notify members directly via personal socket
+    // this works even if they haven't opened this chat y
+
+    const members = await prisma.conversationMember.findMany({
+      where: { conversationId }
+    })
+
+    members.forEach(member => {
+      const socketId = userSocketMap.get(member.userId)
+      if (socketId) {
+        io.to(socketId).emit("mode_changed", {
+          conversationId,
           mode: newMode
-        }
-      });
+        })
+      }
+    })
 
     return res.json({
       success: true,
@@ -218,12 +225,7 @@ export async function toggleStealthMode(
     });
 
   } catch (error) {
-
-    console.error(
-      "Toggle stealth mode error:",
-      error
-    );
-
+    console.error("Toggle stealth mode error:", error);
     return res.status(500).json({
       success: false,
       message: "Server error"
