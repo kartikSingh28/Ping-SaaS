@@ -1,65 +1,35 @@
 // chat.ws.ts
-
 import { Socket } from "socket.io"
+import { getIO, userSocketMap } from "./ws.server"
 
-//  GLOBAL MAP
-const onlineUsers = new Map<string, string>() // userId -> socketId
+export function registerChatHandlers(socket: Socket, userId: string) {
 
-export function registerChatHandlers(socket: Socket) {
-
-  const userId = socket.handshake.query.userId as string
-
-  //  USER CONNECT
-  if (userId) {
-    onlineUsers.set(userId, socket.id)
-
-    // broadcast to everyone
-    socket.server.emit("online_users", Array.from(onlineUsers.keys()))
-
-    console.log("User online:", userId)
-  }
-
-  /* JOIN CONVERSATION ROOM */
   socket.on("join_conversation", (conversationId: string) => {
     if (!conversationId) return
     socket.join(conversationId)
+    console.log(`User ${userId} joined room ${conversationId}`)
   })
 
-  /* LEAVE CONVERSATION ROOM */
   socket.on("leave_conversation", (conversationId: string) => {
     if (!conversationId) return
     socket.leave(conversationId)
   })
 
-  /* TYPING START */
-  socket.on("typing_start", ({ conversationId, userId, name }) => {
+  socket.on("typing_start", ({ conversationId, name }: any) => {
     if (!conversationId) return
-
+    // broadcast to room EXCEPT sender — name comes from server not client
     socket.to(conversationId).emit("user_typing", {
       conversationId,
-      userId,
-      name
+      userId,        // ← from socket handshake, not payload
+      name           // ← still from payload, but fixed on frontend
     })
   })
 
-  /* TYPING STOP */
-  socket.on("typing_stop", ({ conversationId, userId }) => {
+  socket.on("typing_stop", ({ conversationId }: any) => {
     if (!conversationId) return
-
     socket.to(conversationId).emit("user_stop_typing", {
       conversationId,
-      userId
+      userId         // ← from socket handshake
     })
-  })
-
-  //  USER DISCONNECT
-  socket.on("disconnect", () => {
-    if (userId) {
-      onlineUsers.delete(userId)
-
-      socket.server.emit("online_users", Array.from(onlineUsers.keys()))
-
-      console.log("User offline:", userId)
-    }
   })
 }

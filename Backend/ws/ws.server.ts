@@ -4,11 +4,10 @@ import { registerChatHandlers } from "./chat.ws";
 
 let io: Server | null = null;
 
-//  userI
-const userSocketMap = new Map<string, string>();
+// Single source of truth — userId -> socketId
+export const userSocketMap = new Map<string, string>();
 
 export function initWS(server: HTTPServer) {
-
   io = new Server(server, {
     cors: {
       origin: "http://localhost:3001",
@@ -17,49 +16,28 @@ export function initWS(server: HTTPServer) {
   });
 
   io.on("connection", (socket) => {
-
-    console.log("WS connected:", socket.id);
-
     const userId = socket.handshake.query.userId as string;
 
-    console.log("HANDSHAKE:", socket.handshake.query);
+    console.log("WS connected:", socket.id, "userId:", userId);
 
     if (userId) {
       userSocketMap.set(userId, socket.id);
-
-      console.log(" User mapped:", userId, "->", socket.id);
-
-    
       io!.emit("online_users", Array.from(userSocketMap.keys()));
-    } else {
-      console.log(" No userId received on socket connection");
     }
 
-    
+    registerChatHandlers(socket, userId); // ← pass userId in directly
+
     socket.on("disconnect", () => {
       console.log("Disconnected:", socket.id);
-
       if (userId) {
         userSocketMap.delete(userId);
-        console.log(" User removed:", userId);
-
         io!.emit("online_users", Array.from(userSocketMap.keys()));
       }
     });
-
-    // =====================
-    // CHAT HANDLERS
-    // =====================
-    registerChatHandlers(socket);
   });
 }
 
-// EXPORT
-export { userSocketMap };
-
 export function getIO(): Server {
-  if (!io) {
-    throw new Error("Socket.io not initialized");
-  }
+  if (!io) throw new Error("Socket.io not initialized");
   return io;
 }

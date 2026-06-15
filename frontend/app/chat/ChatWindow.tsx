@@ -1,130 +1,107 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { io, Socket } from "socket.io-client"
 import { Send } from "lucide-react"
+import { useSocket } from "../context/SocketContext"
 
 const API_BASE = "http://localhost:3000"
 
 export default function ChatWindow({ selectedUser }: any) {
+  const { socket } = useSocket()
 
   const [content, setContent] = useState("")
   const [messages, setMessages] = useState<any[]>([])
   const [myId, setMyId] = useState("")
-  const [stealthNotification, setStealthNotification] = useState<string | null>(null)
+  const [myName, setMyName] = useState("")
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [mode, setMode] = useState<"NORMAL" | "STEALTH">("NORMAL")
   const [isToggling, setIsToggling] = useState(false)
-  const [isTyping, setIsTyping] = useState(false)
   const [typingUser, setTypingUser] = useState<string | null>(null)
+  const [isTyping, setIsTyping] = useState(false)
 
-  const socketRef = useRef<Socket | null>(null)
-  const bottomRef = useRef<HTMLDivElement | null>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
   const timeoutRef = useRef<any>(null)
   const conversationIdRef = useRef<string | null>(null)
 
-  // GET MY ID
+  // ── GET MY ID + NAME ────────────────────────────────────────────────────────
   useEffect(() => {
     const token = localStorage.getItem("token")
-    if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split(".")[1]))
-        setMyId(payload.userId)
-      } catch {
-        console.error("Token decode error")
-      }
+    if (!token) return
+
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]))
+      setMyId(payload.userId)
+    } catch {
+      console.error("Token decode error")
+      return
     }
+
+    fetch(`${API_BASE}/user/me`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => setMyName(data.name || data.email?.split("@")[0] || ""))
+      .catch(() => {})
   }, [])
 
-  // SOCKET SETUP
+  // ── SOCKET LISTENERS ────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!myId) return
+    if (!socket || !myId) return
 
-    const socket = io(API_BASE, { query: { userId: myId } })
-    socketRef.current = socket
-
-    socket.on("connect", () => {
-      console.log("Connected:", socket.id)
-    })
-
-    socket.on("new_message", (message: any) => {
+    function handleNewMessage(message: any) {
+      if (message.conversationId !== conversationIdRef.current) return
       setMessages(prev => {
-        const filtered = prev.filter(m =>
-          !(
-            m.id.toString().startsWith("temp") &&
-            m.content === message.content &&
-            String(m.senderId) === String(message.senderId)
-          )
-        )
-        const exists = filtered.some(m => m.id === message.id)
-        if (exists) return filtered
-        return [...filtered, message]
+        if (prev.some(m => m.id === message.id)) return prev
+        return [...prev, message]
       })
-
       if (message.isEphemeral) {
         setTimeout(() => {
           setMessages(prev => prev.filter(m => m.id !== message.id))
         }, 60 * 1000)
       }
-    })
+    }
 
-    socket.on("mode_changed", ({ conversationId: incomingId, mode: newMode }: any) => {
-      if (incomingId === conversationIdRef.current) {
-        setMode(newMode)
-
-        if (newMode === "STEALTH") {
-          setMessages(prev => prev.filter(m => m.isEphemeral))
-        }
-
-        if (newMode === "NORMAL") {
-          const token = localStorage.getItem("token")
-          fetch(`${API_BASE}/messages/${incomingId}`, {
-            headers: { Authorization: `Bearer ${token}` }
-          })
-            .then(res => res.json())
-            .then(data => setMessages(data?.data || []))
-        }
-      }
-
+    function handleModeChanged({ conversationId: incomingId, mode: newMode }: any) {
+      if (incomingId !== conversationIdRef.current) return
+      setMode(newMode)
       if (newMode === "STEALTH") {
-        setStealthNotification("🔴 Stealth mode enabled")
+        setMessages(prev => prev.filter(m => m.isEphemeral))
       } else {
-        setStealthNotification(null)
+        const token = localStorage.getItem("token")
+        fetch(`${API_BASE}/messages/${incomingId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+          .then(res => res.json())
+          .then(data => setMessages([...(data?.data || [])].reverse()))
       }
-    })
+    }
+
+    function handleTypingStart({ conversationId: incomingId, userId, name }: any) {
+      if (incomingId !== conversationIdRef.current) return
+      if (userId === myId) return
+      setTypingUser(name)
+    }
+
+    function handleTypingStop({ conversationId: incomingId, userId }: any) {
+      if (incomingId !== conversationIdRef.current) return
+      if (userId === myId) return
+      setTypingUser(null)
+    }
+
+    socket.on("new_message", handleNewMessage)
+    socket.on("mode_changed", handleModeChanged)
+    socket.on("user_typing", handleTypingStart)
+    socket.on("user_stop_typing", handleTypingStop)
 
     return () => {
-      socket.disconnect()
+      socket.off("new_message", handleNewMessage)
+      socket.off("mode_changed", handleModeChanged)
+      socket.off("user_typing", handleTypingStart)
+      socket.off("user_stop_typing", handleTypingStop)
     }
-  }, [myId])
+  }, [socket, myId])
 
-  // TYPING LISTENERS
-  useEffect(() => {
-    if (!socketRef.current) return
-    const socket = socketRef.current
-
-    const handleTyping = ({ conversationId: incomingId, userId, name }: any) => {
-      if (incomingId === conversationId && userId !== myId) {
-        setTypingUser(name)
-      }
-    }
-
-    const handleStop = ({ conversationId: incomingId, userId }: any) => {
-      if (incomingId === conversationId && userId !== myId) {
-        setTypingUser(null)
-      }
-    }
-
-    socket.on("user_typing", handleTyping)
-    socket.on("user_stop_typing", handleStop)
-
-    return () => {
-      socket.off("user_typing", handleTyping)
-      socket.off("user_stop_typing", handleStop)
-    }
-  }, [conversationId, myId])
-
-  // LOAD CHAT
+  // ── LOAD CHAT ───────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedUser || !myId) return
     if (selectedUser.id === myId) return
@@ -147,33 +124,21 @@ export default function ChatWindow({ selectedUser }: any) {
 
         const convoId = raw?.data?.conversationId
         const conversationMode = raw?.data?.mode || "NORMAL"
-
-        setMode(conversationMode)
         if (!convoId) return
 
-        if (conversationId) {
-          socketRef.current?.emit("leave_conversation", conversationId)
-        }
-
-        setConversationId(convoId)
         conversationIdRef.current = convoId
+        setConversationId(convoId)
+        setMode(conversationMode)
+        setTypingUser(null)
+        setMessages([])
 
-        if (socketRef.current?.connected) {
-          socketRef.current.emit("join_conversation", convoId)
-        } else {
-          socketRef.current?.once("connect", () => {
-            socketRef.current?.emit("join_conversation", convoId)
-          })
-        }
+        socket?.emit("join_conversation", convoId)
 
         const msgRes = await fetch(`${API_BASE}/messages/${convoId}`, {
           headers: { Authorization: `Bearer ${token}` }
         })
-
         const msgRaw = await msgRes.json()
-        if (!msgRes.ok) return
-
-        setMessages(msgRaw?.data || [])
+        setMessages([...(msgRaw?.data || [])].reverse())
 
       } catch (err) {
         console.error("Chat load error:", err)
@@ -182,100 +147,69 @@ export default function ChatWindow({ selectedUser }: any) {
     }
 
     loadChat()
-  }, [selectedUser, myId])
+  }, [selectedUser, myId, socket])
 
-  // AUTO SCROLL
+  // ── AUTO SCROLL ─────────────────────────────────────────────────────────────
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  // TYPING HANDLER
-  const handleTyping = (e: any) => {
+  // ── TYPING ──────────────────────────────────────────────────────────────────
+  const handleTyping = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setContent(value)
 
-    if (!socketRef.current || !conversationId) return
-    if (value.trim() === "") return
+    if (!socket || !conversationId) return
+
+    if (value.trim() === "") {
+      if (isTyping) {
+        socket.emit("typing_stop", { conversationId, userId: myId })
+        setIsTyping(false)
+        clearTimeout(timeoutRef.current)
+      }
+      return
+    }
 
     if (!isTyping) {
-      socketRef.current.emit("typing_start", {
+      socket.emit("typing_start", {
         conversationId,
         userId: myId,
-        name: selectedUser.name || selectedUser.email
+        name: myName
       })
       setIsTyping(true)
     }
 
-    if (timeoutRef.current) clearTimeout(timeoutRef.current)
-
+    clearTimeout(timeoutRef.current)
     timeoutRef.current = setTimeout(() => {
-      socketRef.current?.emit("typing_stop", { conversationId, userId: myId })
+      socket.emit("typing_stop", { conversationId, userId: myId })
       setIsTyping(false)
-    }, 1000)
+    }, 1500)
   }
 
-  // TOGGLE STEALTH MODE
-  async function toggleStealthMode() {
-    if (!conversationId) return
-    const token = localStorage.getItem("token")
-
-    try {
-      setIsToggling(true)
-
-      const res = await fetch(
-        `${API_BASE}/conversations/${conversationId}/toggle-stealth`,
-        { method: "PATCH", headers: { Authorization: `Bearer ${token}` } }
-      )
-
-      const raw = await res.json()
-      if (!res.ok) return
-
-      const updatedMode = raw?.data?.mode
-      setMode(updatedMode)
-
-      if (updatedMode === "NORMAL") {
-        const msgRes = await fetch(`${API_BASE}/messages/${conversationId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-        const msgRaw = await msgRes.json()
-        setMessages(msgRaw?.data || [])
-      }
-
-      if (updatedMode === "STEALTH") {
-        setMessages(prev => prev.filter(m => m.isEphemeral))
-      }
-
-    } catch (err) {
-      console.error("Toggle stealth error:", err)
-    } finally {
-      setIsToggling(false)
-    }
-  }
-
-  // SEND MESSAGE
+  // ── SEND MESSAGE ────────────────────────────────────────────────────────────
   async function sendMessage() {
-    if (!selectedUser || !content.trim()) return
+    if (!selectedUser || !content.trim() || !conversationId) return
 
     const token = localStorage.getItem("token")
+    const tempId = `temp-${Date.now()}`
 
     const tempMessage = {
-      id: "temp-" + Date.now(),
+      id: tempId,
       content,
       senderId: myId,
-      isEphemeral: mode === "STEALTH"
+      conversationId,
+      isEphemeral: mode === "STEALTH",
+      createdAt: new Date().toISOString()
     }
 
     setMessages(prev => [...prev, tempMessage])
-
-    if (mode === "STEALTH") {
-      setTimeout(() => {
-        setMessages(prev => prev.filter(m => m.id !== tempMessage.id))
-      }, 60 * 1000)
-    }
-
     setContent("")
-    socketRef.current?.emit("typing_stop", { conversationId, userId: myId })
-    setIsTyping(false)
+
+    if (isTyping) {
+      socket?.emit("typing_stop", { conversationId, userId: myId })
+      setIsTyping(false)
+      clearTimeout(timeoutRef.current)
+    }
 
     try {
       await fetch(`${API_BASE}/messages`, {
@@ -288,17 +222,50 @@ export default function ChatWindow({ selectedUser }: any) {
       })
     } catch (err) {
       console.error("Send error:", err)
+      setMessages(prev => prev.filter(m => m.id !== tempId))
     }
   }
 
-  // ENTER SEND
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       sendMessage()
     }
   }
 
+  // ── TOGGLE STEALTH ──────────────────────────────────────────────────────────
+  async function toggleStealthMode() {
+    if (!conversationId) return
+    const token = localStorage.getItem("token")
+    try {
+      setIsToggling(true)
+      const res = await fetch(
+        `${API_BASE}/conversations/${conversationId}/toggle-stealth`,
+        { method: "PATCH", headers: { Authorization: `Bearer ${token}` } }
+      )
+      const raw = await res.json()
+      if (!res.ok) return
+
+      const updatedMode = raw?.data?.mode
+      setMode(updatedMode)
+
+      if (updatedMode === "NORMAL") {
+        const msgRes = await fetch(`${API_BASE}/messages/${conversationId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        const msgRaw = await msgRes.json()
+        setMessages([...(msgRaw?.data || [])].reverse())
+      } else {
+        setMessages(prev => prev.filter(m => m.isEphemeral))
+      }
+    } catch (err) {
+      console.error("Toggle stealth error:", err)
+    } finally {
+      setIsToggling(false)
+    }
+  }
+
+  // ── EMPTY STATE ─────────────────────────────────────────────────────────────
   if (!selectedUser) {
     return (
       <div className="flex-1 flex items-center justify-center bg-zinc-900 text-zinc-400">
@@ -309,6 +276,7 @@ export default function ChatWindow({ selectedUser }: any) {
 
   const displayName = selectedUser.name || selectedUser.email?.split("@")[0]
 
+  // ── RENDER ──────────────────────────────────────────────────────────────────
   return (
     <div className="flex-1 flex flex-col bg-zinc-900">
 
@@ -317,8 +285,8 @@ export default function ChatWindow({ selectedUser }: any) {
         <img
           src={selectedUser.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${displayName}`}
           className="w-10 h-10 rounded-full"
+          alt={displayName}
         />
-
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <h2 className="text-white font-semibold">{displayName}</h2>
@@ -330,34 +298,27 @@ export default function ChatWindow({ selectedUser }: any) {
           </div>
           <p className="text-xs text-zinc-400">{selectedUser.email}</p>
         </div>
-
         <button
           onClick={toggleStealthMode}
           disabled={isToggling}
-          className={`
-            px-4 py-2 rounded-xl text-xs font-semibold transition
-            ${mode === "STEALTH" ? "bg-red-500 hover:bg-red-600 text-white" : "bg-zinc-700 hover:bg-zinc-600 text-white"}
-            ${isToggling ? "opacity-50 cursor-not-allowed" : ""}
-          `}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold transition
+            ${mode === "STEALTH"
+              ? "bg-red-500 hover:bg-red-600 text-white"
+              : "bg-zinc-700 hover:bg-zinc-600 text-white"}
+            ${isToggling ? "opacity-50 cursor-not-allowed" : ""}`}
         >
           {isToggling ? "..." : mode === "STEALTH" ? "Disable Stealth" : "Enable Stealth"}
         </button>
       </div>
-
-      {/* STEALTH NOTIFICATION */}
-      {stealthNotification && (
-        <div className="mx-6 mt-3 px-4 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-zinc-300 text-sm text-center">
-          {stealthNotification}
-        </div>
-      )}
 
       {/* MESSAGES */}
       <div className="flex-1 p-6 overflow-y-auto space-y-3">
         {messages.map(msg => {
           const isMe = String(msg.senderId) === String(myId)
           return (
-            <div key={msg.id} className={`flex ${isMe ? "justify-end" : ""}`}>
-              <div className={`px-4 py-2 rounded-xl max-w-[70%] break-words ${isMe ? "bg-white text-black" : "bg-zinc-800 text-white"}`}>
+            <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+              <div className={`px-4 py-2 rounded-xl max-w-[70%] break-words text-sm
+                ${isMe ? "bg-white text-black" : "bg-zinc-800 text-white"}`}>
                 {msg.content}
               </div>
             </div>
@@ -366,27 +327,31 @@ export default function ChatWindow({ selectedUser }: any) {
         <div ref={bottomRef} />
       </div>
 
-      {/* TYPING */}
-      {typingUser && (
-        <div className="px-6 text-sm text-zinc-400">
-          {typingUser} is typing...
-        </div>
-      )}
+      {/* TYPING INDICATOR */}
+      <div className="px-6 h-6 flex items-center">
+        {typingUser && (
+          <p className="text-xs text-zinc-400 italic">
+            {typingUser} is typing...
+          </p>
+        )}
+      </div>
 
       {/* INPUT */}
       <div className="p-4 border-t border-zinc-700 flex gap-2">
         <input
           value={content}
           onChange={handleTyping}
-          onKeyPress={handleKeyPress}
-          className="flex-1 bg-zinc-800 text-white px-3 py-2 rounded"
+          onKeyDown={handleKeyDown}
+          className="flex-1 bg-zinc-800 text-white px-4 py-2 rounded-lg outline-none text-sm"
           placeholder="Type a message..."
         />
-        <button onClick={sendMessage} className="bg-white px-4 rounded">
+        <button
+          onClick={sendMessage}
+          className="bg-white px-4 rounded-lg hover:bg-zinc-200 transition flex items-center justify-center"
+        >
           <Send size={16} />
         </button>
       </div>
-
     </div>
   )
 }

@@ -2,16 +2,13 @@ import { Request, Response } from "express"
 import { prisma } from "../lib/prisma"
 import cloudinary from "../lib/cloudinary"
 
-interface AuthRequest extends Request {
-  user: {
-    userId: string
-  }
-}
-
-export async function getAllUsers(req: AuthRequest, res: Response) {
+export async function getAllUsers(
+  req: Request,
+  res: Response
+) {
   try {
 
-    const userId = req.user.userId
+    const userId = (req as any).user.userId
 
     const users = await prisma.user.findMany({
       where: {
@@ -31,23 +28,25 @@ export async function getAllUsers(req: AuthRequest, res: Response) {
       avatar: user.profile?.avatarUrl
     }))
 
-    res.json(formattedUsers)
+    return res.json(formattedUsers)
 
   } catch (err) {
 
     console.error("GET USERS ERROR:", err)
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Failed to fetch users"
     })
   }
 }
 
-export async function uploadAvatar(req: any, res: any) {
+export async function uploadAvatar(
+  req: any,
+  res: any
+) {
   try {
-    const userId = req.user.userId
 
-    // multer gives file here
+    const userId = req.user.userId
     const file = req.file
 
     if (!file) {
@@ -56,12 +55,13 @@ export async function uploadAvatar(req: any, res: any) {
       })
     }
 
-    // upload to cloudinary
-    const result = await cloudinary.uploader.upload(file.path)
+    const result =
+      await cloudinary.uploader.upload(file.path)
 
-    // save url in DB (UserProfile)
     await prisma.userProfile.update({
-      where: { userId },
+      where: {
+        userId
+      },
       data: {
         avatarUrl: result.secure_url
       }
@@ -73,7 +73,11 @@ export async function uploadAvatar(req: any, res: any) {
     })
 
   } catch (err) {
-    console.error("Avatar upload error:", err)
+
+    console.error(
+      "Avatar upload error:",
+      err
+    )
 
     return res.status(500).json({
       message: "Upload failed"
@@ -81,27 +85,49 @@ export async function uploadAvatar(req: any, res: any) {
   }
 }
 
-//get profile
-export async function getMe(req: AuthRequest, res: Response) {
+export async function getMe(
+  req: Request,
+  res: Response
+) {
   try {
-    const userId = req.user.userId
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: { profile: true }
-    })
+    const userId = (req as any).user.userId
 
-    if (!user) return res.status(404).json({ message: "User not found" })
+    const user =
+      await prisma.user.findUnique({
+        where: {
+          id: userId
+        },
+        include: {
+          profile: true
+        }
+      })
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found"
+      })
+    }
 
     return res.json({
       id: user.id,
       email: user.email,
-      name: user.profile?.displayName || user.email,
-      avatar: user.profile?.avatarUrl || null
+      name:
+        user.profile?.displayName ||
+        user.email,
+      avatar:
+        user.profile?.avatarUrl || null
     })
 
   } catch (err) {
-    console.error("GET ME ERROR:", err)
-    res.status(500).json({ message: "Failed to fetch user" })
+
+    console.error(
+      "GET ME ERROR:",
+      err
+    )
+
+    return res.status(500).json({
+      message: "Failed to fetch user"
+    })
   }
 }

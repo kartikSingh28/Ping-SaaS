@@ -1,5 +1,5 @@
 import express from "express";
-import userRouter from "./routes/userRoute";
+import userRouter from "./routes/UserRoute";
 import conversationRouter from "./routes/conversation.routes";
 import messageRouter from "./routes/message.route";
 
