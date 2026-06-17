@@ -105,49 +105,91 @@ export async function getMyConversations(
   res: Response
 ) {
   try {
+    const userId = (req as any).user.userId
 
-    const userId = (req as any).user.userId;
-
-    const conversations =
-      await prisma.conversation.findMany({
-        where: {
-          members: {
-            some: { userId }
-          }
-        },
-
-        include: {
-          members: {
-            include: {
-              user: {
-                include: {
-                  profile: true
-                }
-              }
+    const conversations = await prisma.conversation.findMany({
+      where: {
+        members: { some: { userId } },
+        messages: { some: {} }  // ← only conversations with at least 1 message
+      },
+      include: {
+        members: {
+          include: {
+            user: {
+              include: { profile: true }
             }
           }
+        },
+        messages: {
+          orderBy: { createdAt: "desc" },
+          take: 1
         }
-      });
+      }
+    })
 
-    return res.json({
-      success: true,
-      data: conversations
-    });
+    const shaped = conversations.map(conv => {
+      const lastMessage = conv.messages[0] || null
+
+      const base = {
+        conversationId: conv.id,
+        type: conv.type,
+        mode: conv.mode,
+        lastMessage: lastMessage
+          ? {
+              id: lastMessage.id,
+              content: lastMessage.content,
+              senderId: lastMessage.senderId,
+              createdAt: lastMessage.createdAt,
+              isMe: lastMessage.senderId === userId
+            }
+          : null,
+        updatedAt: lastMessage?.createdAt || conv.createdAt
+      }
+
+      // ONE TO ONE
+      if (conv.type === "ONE_TO_ONE") {
+        const otherMember = conv.members.find(m => m.userId !== userId)
+
+        return {
+          ...base,
+          otherUser: otherMember
+            ? {
+                id: otherMember.user.id,
+                email: otherMember.user.email,
+                name: otherMember.user.profile?.displayName
+                  || otherMember.user.email?.split("@")[0]
+                  || "Unknown",
+                avatar: otherMember.user.profile?.avatarUrl || null
+              }
+            : null
+        }
+      }
+
+      // GROUP
+      return {
+        ...base,
+        group: {
+          id: conv.id,
+          name: conv.name || "Unnamed Group",
+          avatar: conv.avatarUrl || null
+        },
+        memberCount: conv.members.length
+      }
+    })
+
+    shaped.sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() -
+        new Date(a.updatedAt).getTime()
+    )
+
+    return res.json({ success: true, data: shaped })
 
   } catch (error) {
-
-    console.error(
-      "Get conversations error:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message: "Server error"
-    });
+    console.error("Get conversations error:", error)
+    return res.status(500).json({ success: false, message: "Server error" })
   }
 }
-
 
 /* TOGGLE STEALTH MODE */
 export async function toggleStealthMode(

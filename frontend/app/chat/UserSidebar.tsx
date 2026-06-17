@@ -2,13 +2,26 @@
 
 import { useEffect, useState } from "react"
 import { Search } from "lucide-react"
-import { useSocket } from "../context/SocketContext"  // ← adjust path if needed
+import { useSocket } from "../context/SocketContext"
 
 const API_BASE = "http://localhost:3000"
 
+function timeAgo(date: string) {
+  const diff = Date.now() - new Date(date).getTime()
+  const mins = Math.floor(diff / 60000)
+  const hours = Math.floor(diff / 3600000)
+  const days = Math.floor(diff / 86400000)
+
+  if (mins < 1) return "now"
+  if (mins < 60) return `${mins}m`
+  if (hours < 24) return `${hours}h`
+  return `${days}d`
+}
+
 export default function UserSidebar({ setSelectedUser }: any) {
-  const { onlineUsers } = useSocket()  // ← replaces the whole socket useEffect
-  const [users, setUsers] = useState<any[]>([])
+  const { onlineUsers, socket } = useSocket()
+
+  const [conversations, setConversations] = useState<any[]>([])
   const [me, setMe] = useState<any>(null)
   const [searchQuery, setSearchQuery] = useState("")
 
@@ -23,47 +36,72 @@ export default function UserSidebar({ setSelectedUser }: any) {
       .then(data => setMe(data))
       .catch(err => console.error("Me fetch error:", err))
 
-    fetch(`${API_BASE}/user/all`, {
+    fetchConversations(token)
+  }, [])
+
+  function fetchConversations(token: string) {
+    fetch(`${API_BASE}/conversations`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(res => res.json())
-      .then(data => setUsers(data))
-      .catch(err => console.error("Users fetch error:", err))
-  }, [])
+      .then(data => setConversations(data?.data || []))
+      .catch(err => console.error("Conversations fetch error:", err))
+  }
+
+  useEffect(() => {
+    if (!socket) return
+
+    function handleNewMessage() {
+      const token = localStorage.getItem("token")
+      if (token) fetchConversations(token)
+    }
+
+    socket.on("new_message", handleNewMessage)
+    return () => { socket.off("new_message", handleNewMessage) }
+  }, [socket])
 
   const handleUpload = async (e: any) => {
-    const file = e.target.files[0]
+    const file = e.target.files?.[0]
     if (!file) return
+
     const formData = new FormData()
     formData.append("avatar", file)
     const token = localStorage.getItem("token")
-    const res = await fetch(`${API_BASE}/user/upload-avatar`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData
-    })
-    const data = await res.json()
-    setMe((prev: any) => ({ ...prev, avatar: data.avatar }))
+
+    try {
+      const res = await fetch(`${API_BASE}/user/upload-avatar`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      })
+      const data = await res.json()
+      setMe((prev: any) => ({ ...prev, avatar: data.avatar }))
+    } catch (err) {
+      console.error("Upload error:", err)
+    }
   }
 
-  const filteredUsers = users.filter(user =>
-    (user.name || user.email || "")
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase())
-  )
+  const filtered = conversations.filter(conv => {
+    const name = conv.otherUser?.name || conv.otherUser?.email || ""
+    return name.toLowerCase().includes(searchQuery.toLowerCase().trim())
+  })
 
   const myDisplayName = me?.name || me?.email?.split("@")[0] || "User"
 
   return (
     <div className="w-80 bg-zinc-950 text-white h-full flex flex-col border-r border-zinc-800">
 
-      {/* PROFILE */}
+      {/* MY PROFILE */}
       <div className="p-4 bg-zinc-900/50 border-b border-zinc-800">
         <div className="flex items-center gap-3">
           <label className="cursor-pointer">
             <img
-              src={me?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${myDisplayName}`}
+              src={
+                me?.avatar ||
+                `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(myDisplayName)}`
+              }
               className="w-12 h-12 rounded-full object-cover ring-2 ring-zinc-700"
+              alt="Profile"
             />
             <input
               type="file"
@@ -99,40 +137,83 @@ export default function UserSidebar({ setSelectedUser }: any) {
         </h3>
       </div>
 
-      {/* USER LIST */}
+      {/* CONVERSATION LIST */}
       <div className="flex-1 overflow-y-auto">
-        {filteredUsers.length === 0 && (
+        {filtered.length === 0 && (
           <div className="px-4 py-8 text-center">
-            <p className="text-zinc-500 text-sm">No users found</p>
+            <p className="text-zinc-500 text-sm">No conversations yet</p>
           </div>
         )}
 
-        {filteredUsers.map(user => {
-          const displayName = user.name || user.email?.split("@")[0]
+        {filtered.map((conv, index) => {
+          const user = conv.otherUser
+
+          const displayName =
+            user?.name ||
+            user?.email?.split("@")[0] ||
+            "Unknown"
+
           const avatarUrl =
-            user.avatar ||
-            `https://api.dicebear.com/7.x/initials/svg?seed=${displayName}`
-          const isOnline = onlineUsers.includes(String(user.id))
+            user?.avatar ||
+            `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(displayName)}`
+
+          const isOnline = onlineUsers.includes(String(user?.id))
+
+          const lastMsg = conv.lastMessage
+
+          let preview = "No messages yet"
+
+          if (lastMsg?.content) {
+            preview = lastMsg.isMe
+              ? `You: ${lastMsg.content}`
+              : lastMsg.content
+
+            if (preview.length > 35) {
+              preview = preview.slice(0, 35) + "..."
+            }
+          }
 
           return (
             <div
-              key={user.id}
-              onClick={() => setSelectedUser(user)}
-              className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-800 cursor-pointer transition"
+              key={conv.conversationId || conv.id || index}
+              onClick={() => {
+                const selected = {
+                  ...user,
+                  conversationId: conv.conversationId || conv.id
+                }
+                localStorage.setItem("selectedUser", JSON.stringify(selected))
+                setSelectedUser(selected)
+              }}
+              className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-800/70 cursor-pointer transition border-b border-zinc-900"
             >
-              <div className="relative">
+              <div className="relative shrink-0">
                 <img
                   src={avatarUrl}
-                  className="w-12 h-12 rounded-full"
+                  className="w-12 h-12 rounded-full object-cover"
                   alt={displayName}
                 />
+
                 {isOnline && (
                   <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full ring-2 ring-zinc-950" />
                 )}
               </div>
+
               <div className="flex-1 min-w-0">
-                <span className="text-white truncate block">{displayName}</span>
-                <p className="text-xs text-zinc-500 truncate">{user.email}</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-white font-medium truncate text-sm">
+                    {displayName}
+                  </span>
+
+                  {lastMsg && (
+                    <span className="text-zinc-500 text-xs shrink-0 ml-2">
+                      {timeAgo(lastMsg.createdAt)}
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-xs text-zinc-500 truncate mt-0.5">
+                  {preview}
+                </p>
               </div>
             </div>
           )
