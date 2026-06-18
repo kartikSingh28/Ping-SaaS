@@ -6,7 +6,8 @@ import { userMiddleware } from "../Middleware/AuthMiddleware";
 import {
   createPrivateConversation,
   getMyConversations,
-  toggleStealthMode
+  toggleStealthMode,
+  markConversationRead
 } from "../controllers/conversation.controller";
 
 const conversationRouter = Router();
@@ -19,4 +20,5 @@ conversationRouter.patch(
   userMiddleware,
   toggleStealthMode
 )
+conversationRouter.patch("/:conversationId/read", userMiddleware, markConversationRead);
 export default conversationRouter;

@@ -100,6 +100,8 @@ export async function createPrivateConversation(
 
 /* GET MY CONVERSATIONS */
 
+/* GET MY CONVERSATIONS */
+
 export async function getMyConversations(
   req: Request,
   res: Response
@@ -110,7 +112,7 @@ export async function getMyConversations(
     const conversations = await prisma.conversation.findMany({
       where: {
         members: { some: { userId } },
-        messages: { some: {} }  // ← only conversations with at least 1 message
+        messages: { some: {} }
       },
       include: {
         members: {
@@ -127,55 +129,71 @@ export async function getMyConversations(
       }
     })
 
-    const shaped = conversations.map(conv => {
-      const lastMessage = conv.messages[0] || null
+    const shaped = await Promise.all(
+      conversations.map(async conv => {
+        const lastMessage = conv.messages[0] || null
 
-      const base = {
-        conversationId: conv.id,
-        type: conv.type,
-        mode: conv.mode,
-        lastMessage: lastMessage
-          ? {
-              id: lastMessage.id,
-              content: lastMessage.content,
-              senderId: lastMessage.senderId,
-              createdAt: lastMessage.createdAt,
-              isMe: lastMessage.senderId === userId
-            }
-          : null,
-        updatedAt: lastMessage?.createdAt || conv.createdAt
-      }
+        // Find this user's own membership row to read their lastReadAt
+        const myMembership = conv.members.find(m => m.userId === userId)
+        const lastReadAt = myMembership?.lastReadAt || new Date(0)
 
-      // ONE TO ONE
-      if (conv.type === "ONE_TO_ONE") {
-        const otherMember = conv.members.find(m => m.userId !== userId)
+        // Count messages that arrived after I last checked in, excluding my own
+        const unreadCount = await prisma.message.count({
+          where: {
+            conversationId: conv.id,
+            createdAt: { gt: lastReadAt },
+            senderId: { not: userId }
+          }
+        })
 
+        const base = {
+          conversationId: conv.id,
+          type: conv.type,
+          mode: conv.mode,
+          unreadCount,
+          lastMessage: lastMessage
+            ? {
+                id: lastMessage.id,
+                content: lastMessage.content,
+                senderId: lastMessage.senderId,
+                createdAt: lastMessage.createdAt,
+                isMe: lastMessage.senderId === userId
+              }
+            : null,
+          updatedAt: lastMessage?.createdAt || conv.createdAt
+        }
+
+        // ONE TO ONE
+        if (conv.type === "ONE_TO_ONE") {
+          const otherMember = conv.members.find(m => m.userId !== userId)
+
+          return {
+            ...base,
+            otherUser: otherMember
+              ? {
+                  id: otherMember.user.id,
+                  email: otherMember.user.email,
+                  name: otherMember.user.profile?.displayName
+                    || otherMember.user.email?.split("@")[0]
+                    || "Unknown",
+                  avatar: otherMember.user.profile?.avatarUrl || null
+                }
+              : null
+          }
+        }
+
+        // GROUP
         return {
           ...base,
-          otherUser: otherMember
-            ? {
-                id: otherMember.user.id,
-                email: otherMember.user.email,
-                name: otherMember.user.profile?.displayName
-                  || otherMember.user.email?.split("@")[0]
-                  || "Unknown",
-                avatar: otherMember.user.profile?.avatarUrl || null
-              }
-            : null
+          group: {
+            id: conv.id,
+            name: conv.name || "Unnamed Group",
+            avatar: conv.avatarUrl || null
+          },
+          memberCount: conv.members.length
         }
-      }
-
-      // GROUP
-      return {
-        ...base,
-        group: {
-          id: conv.id,
-          name: conv.name || "Unnamed Group",
-          avatar: conv.avatarUrl || null
-        },
-        memberCount: conv.members.length
-      }
-    })
+      })
+    )
 
     shaped.sort(
       (a, b) =>
@@ -272,19 +290,20 @@ export async function toggleStealthMode(
       });
 
     members.forEach((member) => {
-      const socketId =
-        userSocketMap.get(member.userId);
+  const socketIds = userSocketMap.get(member.userId);
 
-      if (socketId) {
-        io.to(socketId).emit(
-          "mode_changed",
-          {
-            conversationId,
-            mode: newMode
-          }
-        );
-      }
+  if (socketIds) {
+    socketIds.forEach(socketId => {
+      io.to(socketId).emit(
+        "mode_changed",
+        {
+          conversationId,
+          mode: newMode
+        }
+      );
     });
+  }
+});
 
     return res.json({
       success: true,
@@ -305,5 +324,43 @@ export async function toggleStealthMode(
       success: false,
       message: "Server error"
     });
+  }
+}
+
+//mark the read conversation
+
+export async function markConversationRead(req:Request,res:Response){
+  try {
+    console.log("MARK READ HIT")
+    console.log("conversationId:", req.params.conversationId)
+    console.log("userId:", (req as any).user.userId)
+
+    const userId = (req as any).user.userId
+    const conversationId = req.params.conversationId as string
+
+    const member = await prisma.conversationMember.findFirst({
+      where: { conversationId, userId }
+    })
+
+    if (!member) {
+      return res.status(403).json({
+        success: false,
+        message: "Not a member of this conversation"
+      })
+    }
+
+    await prisma.conversationMember.update({
+      where: { id: member.id },
+      data: { lastReadAt: new Date() }
+    })
+
+    return res.json({ success: true })
+
+  } catch (error: any) {
+    console.error("Mark read error:", error)
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    })
   }
 }

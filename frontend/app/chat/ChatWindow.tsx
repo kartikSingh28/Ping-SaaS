@@ -132,7 +132,17 @@ export default function ChatWindow({ selectedUser }: any) {
         setTypingUser(null)
         setMessages([])
 
-        socket?.emit("join_conversation", convoId)
+       socket?.emit("join_conversation", convoId);
+
+// Mark this conversation as read, then tell the sidebar to refresh
+fetch(`${API_BASE}/conversations/${convoId}/read`, {
+  method: "PATCH",
+  headers: { Authorization: `Bearer ${token}` }
+})
+  .then(() => {
+    window.dispatchEvent(new CustomEvent("conversation_read"))
+  })
+  .catch(() => {})
 
         const msgRes = await fetch(`${API_BASE}/messages/${convoId}`, {
           headers: { Authorization: `Bearer ${token}` }

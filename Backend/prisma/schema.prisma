@@ -5,90 +5,86 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
-model User{
-  id String @id @default(uuid())
-  email String @unique
-  passwordHash String
-  createdAt DateTime @default(now())
 
-  profile UserProfile?
-  memberships ConversationMember[]
-  messages Message[]
+model User {
+  id                   String               @id @default(uuid())
+  email                String               @unique
+  createdAt            DateTime             @default(now())
+  passwordHash         String
   createdConversations Conversation[]
+  memberships          ConversationMember[]
+  messages             Message[]
+  profile              UserProfile?
 }
 
-model UserProfile{
-  id String @id @default(uuid())
-  userId String @unique
+model UserProfile {
+  id          String   @id @default(uuid())
+  userId      String   @unique
   displayName String
-  avatarUrl String?
-  bio String?
-  updatedAt DateTime @updatedAt
-
-  user User @relation(fields:[userId],references:[id])
+  avatarUrl   String?
+  bio         String?
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id])
 }
 
-enum ConversationType{
+model Conversation {
+  id        String               @id @default(uuid())
+  type      ConversationType
+  mode      ConversationMode     @default(NORMAL)
+  name      String?
+  avatarUrl String?
+  createdBy String
+  createdAt DateTime             @default(now())
+  creator   User                 @relation(fields: [createdBy], references: [id])
+  members   ConversationMember[]
+  summaries GroupSummary[]
+  messages  Message[]
+}
+
+model ConversationMember {
+  id             String       @id @default(uuid())
+  conversationId String
+  userId         String
+  role           MemberRole   @default(MEMBER)
+  joinedAt       DateTime     @default(now())
+  lastReadAt     DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+
+  @@unique([conversationId, userId])
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  senderId       String
+  content        String
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  sender         User         @relation(fields: [senderId], references: [id])
+}
+
+model GroupSummary {
+  id             String       @id @default(uuid())
+  conversationId String
+  fromTime       DateTime
+  toTime         DateTime
+  summaryText    String
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+}
+
+enum ConversationType {
   ONE_TO_ONE
   GROUP
 }
 
-enum ConversationMode{
+enum ConversationMode {
   NORMAL
   STEALTH
 }
 
-model Conversation{
-  id String @id @default(uuid())
-  type ConversationType
-  mode ConversationMode @default(NORMAL)
-  name String?
-  avatarUrl String?
-  createdBy String
-  createdAt DateTime @default(now())
-
-  creator User @relation(fields:[createdBy],references:[id])
-  members ConversationMember[]
-  messages Message[]
-  summaries GroupSummary[]
-}
-
-enum MemberRole{
+enum MemberRole {
   ADMIN
   MEMBER
-}
-
-model ConversationMember{
-  id String @id @default(uuid())
-  conversationId String
-  userId String
-  role MemberRole @default(MEMBER)
-  joinedAt DateTime @default(now())
-
-  conversation Conversation @relation(fields:[conversationId],references:[id])
-  user User @relation(fields:[userId],references:[id])
-
-  @@unique([conversationId,userId])
-}
-
-model Message{
-  id String @id @default(uuid())
-  conversationId String
-  senderId String
-  content String
-  createdAt DateTime @default(now())
-
-  conversation Conversation @relation(fields:[conversationId],references:[id])
-  sender User @relation(fields:[senderId],references:[id])
-}
-
-model GroupSummary{
-  id String @id @default(uuid())
-  conversationId String
-  fromTime DateTime
-  toTime DateTime
-  summaryText String
-  createdAt DateTime @default(now())
-
-  conversation Conversation @relation(fields:[conversationId],references:[id])
 }

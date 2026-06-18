@@ -48,6 +48,7 @@ export default function UserSidebar({ setSelectedUser }: any) {
       .catch(err => console.error("Conversations fetch error:", err))
   }
 
+  // Refresh sidebar when a new message arrives
   useEffect(() => {
     if (!socket) return
 
@@ -59,6 +60,17 @@ export default function UserSidebar({ setSelectedUser }: any) {
     socket.on("new_message", handleNewMessage)
     return () => { socket.off("new_message", handleNewMessage) }
   }, [socket])
+
+  // Refresh sidebar when a conversation is marked as read
+  useEffect(() => {
+    function handleConversationRead() {
+      const token = localStorage.getItem("token")
+      if (token) fetchConversations(token)
+    }
+
+    window.addEventListener("conversation_read", handleConversationRead)
+    return () => window.removeEventListener("conversation_read", handleConversationRead)
+  }, [])
 
   const handleUpload = async (e: any) => {
     const file = e.target.files?.[0]
@@ -199,17 +211,23 @@ export default function UserSidebar({ setSelectedUser }: any) {
               </div>
 
               <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <span className="text-white font-medium truncate text-sm">
-                    {displayName}
-                  </span>
+               <div className="flex items-center justify-between">
+  <span className="text-white font-medium truncate text-sm flex items-center gap-2">
+    {displayName}
 
-                  {lastMsg && (
-                    <span className="text-zinc-500 text-xs shrink-0 ml-2">
-                      {timeAgo(lastMsg.createdAt)}
-                    </span>
-                  )}
-                </div>
+    {conv.unreadCount > 0 && (
+      <span className="bg-zinc-600 text-zinc-100 text-[11px] font-semibold rounded-full min-w-[20px] h-[20px] flex items-center justify-center px-1.5 border border-zinc-500">
+        {conv.unreadCount > 9 ? "9+" : conv.unreadCount}
+      </span>
+    )}
+  </span>
+
+  {lastMsg && (
+    <span className="text-zinc-500 text-xs shrink-0 ml-2">
+      {timeAgo(lastMsg.createdAt)}
+    </span>
+  )}
+</div>
 
                 <p className="text-xs text-zinc-500 truncate mt-0.5">
                   {preview}
