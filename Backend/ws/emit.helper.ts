@@ -6,24 +6,27 @@ export async function emitToConversationMembers(
   event: string,
   payload: any,
   excludeUserId?: string
-) {
+): Promise<boolean> {
   const io = getIO()
 
   const members = await prisma.conversationMember.findMany({
     where: { conversationId }
   })
 
+  let deliveredToAnyone = false
+
   members.forEach(member => {
     if (excludeUserId && member.userId === excludeUserId) return
 
-    // CHANGED: get the SET of sockets for this user
     const socketIds = userSocketMap.get(member.userId)
 
-    if (socketIds) {
-      // Emit to every tab/device this user has open
+    if (socketIds && socketIds.size > 0) {
       socketIds.forEach(socketId => {
         io.to(socketId).emit(event, payload)
       })
+      deliveredToAnyone = true
     }
   })
+
+  return deliveredToAnyone
 }

@@ -1,4 +1,6 @@
 import { Request, Response } from "express"
+import { prisma } from "../lib/prisma"
+import { getIO, userSocketMap } from "../ws/ws.server"
 import {
   sendMessageService,
   getConversationMessagesService
@@ -24,14 +26,37 @@ export async function sendMessage(req: Request, res: Response) {
       content
     )
 
-    // Deliver to all OTHER members via personal socket
-    // Excludes sender — they already have the optimistic message
-    await emitToConversationMembers(
+    const wasDelivered = await emitToConversationMembers(
       conversationId,
       "new_message",
       message,
       userId
     )
+
+    // If recipient was online and received it, mark as DELIVERED
+    if (wasDelivered && message.id && !message.id.toString().startsWith("stealth")) {
+      const updated = await prisma.message.update({
+        where: { id: message.id },
+        data: { status: "DELIVERED" }
+      })
+
+      // Tell the SENDER their message status changed
+      const senderSocketIds = userSocketMap.get(userId)
+      if (senderSocketIds) {
+        senderSocketIds.forEach(socketId => {
+          getIO().to(socketId).emit("message_status_updated", {
+            messageId: message.id,
+            conversationId,
+            status: "DELIVERED"
+          })
+        })
+      }
+
+      return res.status(201).json({
+        success: true,
+        data: { message: updated, conversationId }
+      })
+    }
 
     return res.status(201).json({
       success: true,
@@ -46,7 +71,6 @@ export async function sendMessage(req: Request, res: Response) {
     })
   }
 }
-
 /* GET MESSAGES */
 export async function getMessages(req: Request, res: Response) {
   try {

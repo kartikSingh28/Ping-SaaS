@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Send } from "lucide-react"
+import { Send, Check, CheckCheck, Clock } from "lucide-react"
 import { useSocket } from "../context/SocketContext"
 
 const API_BASE = "http://localhost:3000"
@@ -88,16 +88,35 @@ export default function ChatWindow({ selectedUser }: any) {
       setTypingUser(null)
     }
 
+    // Single message flips to DELIVERED (sender's UI updates)
+    function handleMessageStatusUpdated({ messageId, status }: any) {
+      setMessages(prev =>
+        prev.map(m => m.id === messageId ? { ...m, status } : m)
+      )
+    }
+
+    // Recipient opened the chat — all MY sent messages flip to READ
+    function handleMessagesRead({ conversationId: incomingId }: any) {
+      if (incomingId !== conversationIdRef.current) return
+      setMessages(prev =>
+        prev.map(m => m.senderId === myId ? { ...m, status: "READ" } : m)
+      )
+    }
+
     socket.on("new_message", handleNewMessage)
     socket.on("mode_changed", handleModeChanged)
     socket.on("user_typing", handleTypingStart)
     socket.on("user_stop_typing", handleTypingStop)
+    socket.on("message_status_updated", handleMessageStatusUpdated)
+    socket.on("messages_read", handleMessagesRead)
 
     return () => {
       socket.off("new_message", handleNewMessage)
       socket.off("mode_changed", handleModeChanged)
       socket.off("user_typing", handleTypingStart)
       socket.off("user_stop_typing", handleTypingStop)
+      socket.off("message_status_updated", handleMessageStatusUpdated)
+      socket.off("messages_read", handleMessagesRead)
     }
   }, [socket, myId])
 
@@ -132,17 +151,17 @@ export default function ChatWindow({ selectedUser }: any) {
         setTypingUser(null)
         setMessages([])
 
-       socket?.emit("join_conversation", convoId);
+        socket?.emit("join_conversation", convoId)
 
-// Mark this conversation as read, then tell the sidebar to refresh
-fetch(`${API_BASE}/conversations/${convoId}/read`, {
-  method: "PATCH",
-  headers: { Authorization: `Bearer ${token}` }
-})
-  .then(() => {
-    window.dispatchEvent(new CustomEvent("conversation_read"))
-  })
-  .catch(() => {})
+        // Mark this conversation as read, then tell the sidebar to refresh
+        fetch(`${API_BASE}/conversations/${convoId}/read`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}` }
+        })
+          .then(() => {
+            window.dispatchEvent(new CustomEvent("conversation_read"))
+          })
+          .catch(() => {})
 
         const msgRes = await fetch(`${API_BASE}/messages/${convoId}`, {
           headers: { Authorization: `Bearer ${token}` }
@@ -209,6 +228,7 @@ fetch(`${API_BASE}/conversations/${convoId}/read`, {
       senderId: myId,
       conversationId,
       isEphemeral: mode === "STEALTH",
+      status: "SENDING",   // ← shows the clock icon until server confirms
       createdAt: new Date().toISOString()
     }
 
@@ -222,7 +242,7 @@ fetch(`${API_BASE}/conversations/${convoId}/read`, {
     }
 
     try {
-      await fetch(`${API_BASE}/messages`, {
+      const res = await fetch(`${API_BASE}/messages`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -230,6 +250,15 @@ fetch(`${API_BASE}/conversations/${convoId}/read`, {
         },
         body: JSON.stringify({ otherUserId: selectedUser.id, content })
       })
+      const raw = await res.json()
+
+      if (res.ok && raw?.data?.message) {
+        // Replace the temp message with the real one from the server
+        // (carries real id + correct status: SENT or DELIVERED)
+        setMessages(prev =>
+          prev.map(m => m.id === tempId ? raw.data.message : m)
+        )
+      }
     } catch (err) {
       console.error("Send error:", err)
       setMessages(prev => prev.filter(m => m.id !== tempId))
@@ -286,6 +315,21 @@ fetch(`${API_BASE}/conversations/${convoId}/read`, {
 
   const displayName = selectedUser.name || selectedUser.email?.split("@")[0]
 
+  // Render the correct tick icon based on message status
+  function renderStatusIcon(status: string | undefined) {
+    if (status === "READ") {
+      return <CheckCheck size={14} className="text-blue-500" />
+    }
+    if (status === "DELIVERED") {
+      return <CheckCheck size={14} className="text-zinc-400" />
+    }
+    if (status === "SENT") {
+      return <Check size={14} className="text-zinc-400" />
+    }
+    // SENDING or undefined — optimistic message still in flight
+    return <Clock size={12} className="text-zinc-500" />
+  }
+
   // ── RENDER ──────────────────────────────────────────────────────────────────
   return (
     <div className="flex-1 flex flex-col bg-zinc-900">
@@ -327,9 +371,14 @@ fetch(`${API_BASE}/conversations/${convoId}/read`, {
           const isMe = String(msg.senderId) === String(myId)
           return (
             <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-              <div className={`px-4 py-2 rounded-xl max-w-[70%] break-words text-sm
+              <div className={`px-4 py-2 rounded-xl max-w-[70%] break-words text-sm flex items-end gap-2
                 ${isMe ? "bg-white text-black" : "bg-zinc-800 text-white"}`}>
-                {msg.content}
+                <span>{msg.content}</span>
+                {isMe && !msg.isEphemeral && (
+                  <span className="shrink-0 mb-[1px]">
+                    {renderStatusIcon(msg.status)}
+                  </span>
+                )}
               </div>
             </div>
           )

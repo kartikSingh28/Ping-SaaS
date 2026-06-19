@@ -16,6 +16,11 @@ model User {
   messages             Message[]
   profile              UserProfile?
 }
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+}
 
 model UserProfile {
   id          String   @id @default(uuid())
@@ -59,6 +64,7 @@ model Message {
   conversationId String
   senderId       String
   content        String
+   status         MessageStatus  @default(SENT)
   createdAt      DateTime     @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id])
   sender         User         @relation(fields: [senderId], references: [id])

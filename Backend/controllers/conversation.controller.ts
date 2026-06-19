@@ -329,33 +329,48 @@ export async function toggleStealthMode(
 
 //mark the read conversation
 
-export async function markConversationRead(req:Request,res:Response){
+export async function markConversationRead(req: Request, res: Response) {
   try {
-    console.log("MARK READ HIT")
-    console.log("conversationId:", req.params.conversationId)
-    console.log("userId:", (req as any).user.userId)
-
     const userId = (req as any).user.userId
     const conversationId = req.params.conversationId as string
-
     const member = await prisma.conversationMember.findFirst({
       where: { conversationId, userId }
     })
-
     if (!member) {
       return res.status(403).json({
         success: false,
         message: "Not a member of this conversation"
       })
     }
-
+    // Flip all unread messages from OTHERS to READ
+    const updatedMessages = await prisma.message.updateMany({
+      where: {
+        conversationId,
+        senderId: { not: userId },
+        status: { not: "READ" }
+      },
+      data: { status: "READ" }
+    })
     await prisma.conversationMember.update({
       where: { id: member.id },
       data: { lastReadAt: new Date() }
     })
-
+    // Notify the OTHER members that their messages were read
+    if (updatedMessages.count > 0) {
+      const io = getIO()
+      const otherMembers = await prisma.conversationMember.findMany({
+        where: { conversationId, userId: { not: userId } }
+      })
+      otherMembers.forEach(m => {
+        const socketIds = userSocketMap.get(m.userId)
+        if (socketIds) {
+          socketIds.forEach(socketId => {
+            io.to(socketId).emit("messages_read", { conversationId })
+          })
+        }
+      })
+    }
     return res.json({ success: true })
-
   } catch (error: any) {
     console.error("Mark read error:", error)
     return res.status(500).json({

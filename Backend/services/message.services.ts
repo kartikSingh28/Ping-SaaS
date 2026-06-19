@@ -75,7 +75,8 @@ export async function sendMessageService(
     data: {
       conversationId: conversation.id,
       senderId: userId,
-      content
+      content,
+      status: "SENT"   // explicit — also the schema default, but stated here for clarity
     },
     include: {
       sender: {
